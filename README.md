@@ -1,4 +1,4 @@
-# perovskite-synthesis-ui
+# manual-synthesis-ui
 
 React + FastAPI application for entering manual synthesis details for samples and uploading the samples and datasets to Crucible.
 

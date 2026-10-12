@@ -16,7 +16,7 @@ steps:
       - -c
       - |
         if [ "${BRANCH_NAME}" = "main" ]; then
-          gcloud run deploy perovskite-synthesis-ui-main \
+          gcloud run deploy manual-synthesis-ui-main \
             --image ${_IMAGE_PATH}:latest \
             --region us-central1 \
             --platform managed \
