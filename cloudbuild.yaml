@@ -20,6 +20,7 @@ steps:
             --image ${_IMAGE_PATH}:latest \
             --region us-central1 \
             --platform managed \
+            --port 8000 \
             --quiet \
             --update-env-vars DEBUG=true,RUN_ENV=cloud,PYTHON_UNBUFFERED=1 \
             --update-secrets ADMIN_APIKEY=perovskite-apps-crucible-apikey:latest,PROPDB_APIKEY=propdb-apikey:latest
