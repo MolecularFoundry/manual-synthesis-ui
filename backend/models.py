@@ -25,7 +25,7 @@ class LoginResponse(BaseModel):
 # ============================================================================
 
 class SynthesisFieldsResponse(BaseModel):
-    fields: Dict[str, List[str]]
+    categories: Dict[str, Dict[str, List[str]]]
 
 class ParentCandidate(BaseModel):
     unique_id: str
@@ -68,6 +68,7 @@ class SynthesisUploadRequest(BaseModel):
     orcid: str
     user_name: str
     project: str
+    category: str
     synthesis_type: str
     data: List[Dict[str, Any]]
     session_name: Optional[str] = None

@@ -40,43 +40,96 @@ logger.info(f"Crucible client initialized with URL: {crucible_url}")
 
 # =============================================================================
 # SYNTHESIS DATASET FIELD DEFINITIONS
+#
+# Categories group synthesis types that belong to the same project/workflow.
+# Type names (e.g. "Stock Solution") may repeat across categories with
+# entirely different columns and parent rules, so all lookups are scoped by
+# category first.
 # =============================================================================
 
-SYNTHESIS_FIELDS = {
-    "Solid Precursor": [
-        "Sample Name", "Sample Description", "Notes", "CAS", "RFID", "Name", "SMILES", "Abbrev",
-        "Vendor", "Opened Timestamp", "Storage Location", 'NMR_ID'
-    ],
-    "Stock Solution": [
-        "Sample Name", "Sample Description", "Notes", "Organic Salt SP-ID", "Organic Salt Name",
-        "Organic Cation Actual Weight mg", "Metal Salt SP-ID", "Metal Salt Name",
-        "Metal Cation Actual Weight mg", "Solvent", "Solvent Volume ml",
-        "Target Concentration mol", "Storage Location"
-    ],
-    "Precursor Solution": [
-        "Sample Name", "Sample Description", "Notes", "Target Stoichiometry", "Component A SS-ID",
-        "Component B SS-ID", "SMILES_Organic", "SMILES_Metal", "Mixing Ratio", "Target Concentration (M)",
-        "Storage Location", "PS Autobot Recipe Filename"
-    ],
-}
-
-# Which columns hold parent references, and what sample_type those parents must
-# be. A stock solution is always made from solid precursors; a precursor
-# solution always from stock solutions. Filtering the lookup by type removes
-# most name collisions before they can reach the user.
-PARENT_FIELDS = {
-    "Stock Solution": {
-        "parent_type": "solid precursor",
+SYNTHESIS_CATEGORIES = {
+    "Perovskites_10k": {
         "fields": {
-            "organic_salt_sp-id": "Organic Salt SP-ID",
-            "metal_salt_sp-id": "Metal Salt SP-ID",
+            "Solid Precursor": [
+                "Sample Name", "Sample Description", "Notes", "CAS", "RFID", "Name", "SMILES", "Abbrev",
+                "Vendor", "Opened Timestamp", "Storage Location", 'NMR_ID'
+            ],
+            "Stock Solution": [
+                "Sample Name", "Sample Description", "Notes", "Organic Salt SP-ID", "Organic Salt Name",
+                "Organic Cation Actual Weight mg", "Metal Salt SP-ID", "Metal Salt Name",
+                "Metal Cation Actual Weight mg", "Solvent", "Solvent Volume ml",
+                "Target Concentration mol", "Storage Location"
+            ],
+            "Precursor Solution": [
+                "Sample Name", "Sample Description", "Notes", "Target Stoichiometry", "Component A SS-ID",
+                "Component B SS-ID", "SMILES_Organic", "SMILES_Metal", "Mixing Ratio", "Target Concentration (M)",
+                "Storage Location", "PS Autobot Recipe Filename"
+            ],
+        },
+        # Which columns hold parent references, and what sample_type those
+        # parents must be. A stock solution is always made from solid
+        # precursors; a precursor solution always from stock solutions.
+        # Filtering the lookup by type removes most name collisions before
+        # they can reach the user.
+        "parents": {
+            "Stock Solution": {
+                "parent_type": "solid precursor",
+                "fields": {
+                    "organic_salt_sp-id": "Organic Salt SP-ID",
+                    "metal_salt_sp-id": "Metal Salt SP-ID",
+                },
+            },
+            "Precursor Solution": {
+                "parent_type": "stock solution",
+                "fields": {
+                    "component_a_ss-id": "Component A SS-ID",
+                    "component_b_ss-id": "Component B SS-ID",
+                },
+            },
         },
     },
-    "Precursor Solution": {
-        "parent_type": "stock solution",
+    "Solgel_Opentrons_Paige": {
         "fields": {
-            "component_a_ss-id": "Component A SS-ID",
-            "component_b_ss-id": "Component B SS-ID",
+            "Solid Precursor": [
+                "Sample Name", "Sample Description", "Notes", "CAS", "RFID", "Name", "SMILES", "Abbrev.",
+                "Vendor", "Opened Timestamp", "Storage Location", "NMR_ID"
+            ],
+            "Stock Solution": [
+                "Sample Name", "Sample Description", "Notes", "Metal Salt SP-ID", "Metal Salt Name",
+                "Metal Cation Actual Weight mg", "Citric Acid SP-ID", "Citric Acid Actual Weight mg",
+                "Solvent", "Solvent Volume ml", "Target Concentration (M)", "Storage Location"
+            ],
+            "Precursor Solution": [
+                "Sample Name", "Sample Description", "Notes", "Target Stoichiometry", "Preparation Method",
+                "Target Total Volume (uL)", "Mn Precursor SS-ID", "Mn Precursor Volume uL",
+                "Ca Precursor SS-ID", "Ca Precursor Volume uL", "Sr Precursor SS-ID", "Sr Precursor Volume uL",
+                "Y Precursor SS-ID", "Y Precursor Volume uL", "Fe Precursor SS-ID", "Fe Precursor Volume uL",
+                "Ti Precursor SS-ID", "Ti Precursor Volume uL", "Citric Acid SS-ID",
+                "Citric Acid Precursor weight mg", "Ethylene Glycol SS-ID", "EG Volume uL",
+                "Storage Location", "Opentrons Recipe Filename"
+            ],
+        },
+        "parents": {
+            "Stock Solution": {
+                "parent_type": "solid precursor",
+                "fields": {
+                    "metal_salt_sp-id": "Metal Salt SP-ID",
+                    "citric_acid_sp-id": "Citric Acid SP-ID",
+                },
+            },
+            "Precursor Solution": {
+                "parent_type": "stock solution",
+                "fields": {
+                    "mn_precursor_ss-id": "Mn Precursor SS-ID",
+                    "ca_precursor_ss-id": "Ca Precursor SS-ID",
+                    "sr_precursor_ss-id": "Sr Precursor SS-ID",
+                    "y_precursor_ss-id": "Y Precursor SS-ID",
+                    "fe_precursor_ss-id": "Fe Precursor SS-ID",
+                    "ti_precursor_ss-id": "Ti Precursor SS-ID",
+                    "citric_acid_ss-id": "Citric Acid SS-ID",
+                    "ethylene_glycol_ss-id": "Ethylene Glycol SS-ID",
+                },
+            },
         },
     },
 }
@@ -162,7 +215,7 @@ def resolve_parent_reference(reference, project, parent_type):
     return None, matches
 
 
-def validate_rows(records, project, synthesis_type, selections):
+def validate_rows(records, project, category, synthesis_type, selections):
     """
     Read-only pass. Resolves every parent reference and looks for sample names
     already present in the project. Writes nothing.
@@ -170,7 +223,7 @@ def validate_rows(records, project, synthesis_type, selections):
     Returns (resolved, ambiguous, unresolved, duplicates) where resolved maps
     (row, field) to a parent unique_id.
     """
-    parent_conf = PARENT_FIELDS.get(synthesis_type)
+    parent_conf = SYNTHESIS_CATEGORIES[category]["parents"].get(synthesis_type)
     resolved = {}
     ambiguous = []
     unresolved = []
@@ -239,11 +292,11 @@ def prepare_records(dataset_df):
     return list(zip(dataset_df.index.tolist(), dataset_df.to_dict('records')))
 
 
-def upload_all_sample_synthesis_info(orcid, project, records, synthesis_type, user_name,
+def upload_all_sample_synthesis_info(orcid, project, records, category, synthesis_type, user_name,
                                      resolved, unresolved, session_name=None):
     logger.debug(f"Adding {len(records)} rows of {synthesis_type} dataset to project {project}")
 
-    parent_conf = PARENT_FIELDS.get(synthesis_type, {})
+    parent_conf = SYNTHESIS_CATEGORIES[category]["parents"].get(synthesis_type, {})
     parent_field_names = list(parent_conf.get('fields', {}))
 
     # Rows whose parent reference matched nothing are skipped outright rather
@@ -320,7 +373,8 @@ def upload_all_sample_synthesis_info(orcid, project, records, synthesis_type, us
 async def get_synthesis_fields():
     try:
         logger.info("Fetching synthesis fields")
-        return SynthesisFieldsResponse(fields=SYNTHESIS_FIELDS)
+        categories = {name: conf["fields"] for name, conf in SYNTHESIS_CATEGORIES.items()}
+        return SynthesisFieldsResponse(categories=categories)
     except Exception as e:
         logger.error(f"Error fetching synthesis fields: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -329,8 +383,11 @@ async def get_synthesis_fields():
 @router.post("/upload", response_model=SynthesisUploadResponse)
 async def upload_synthesis_data(request: SynthesisUploadRequest):
     try:
-        logger.info(f"Upload request: {request.synthesis_type} for project {request.project}")
+        logger.info(f"Upload request: {request.category} / {request.synthesis_type} for project {request.project}")
         logger.info(f"Data rows: {len(request.data)}")
+
+        if request.category not in SYNTHESIS_CATEGORIES:
+            raise HTTPException(status_code=400, detail=f"Unknown synthesis category: {request.category}")
 
         if not request.data or len(request.data) == 0:
             return SynthesisUploadResponse(success=False, message="No data provided for upload")
@@ -340,7 +397,7 @@ async def upload_synthesis_data(request: SynthesisUploadRequest):
 
         # Pass 1 is read-only, so halting here leaves Crucible untouched.
         resolved, ambiguous, unresolved, duplicates = validate_rows(
-            records, request.project, request.synthesis_type, selections)
+            records, request.project, request.category, request.synthesis_type, selections)
 
         if ambiguous:
             logger.info(f"Upload halted: {len(ambiguous)} parent reference(s) need selection")
@@ -368,6 +425,7 @@ async def upload_synthesis_data(request: SynthesisUploadRequest):
             orcid=request.orcid,
             project=request.project,
             records=records,
+            category=request.category,
             synthesis_type=request.synthesis_type,
             user_name=request.user_name,
             resolved=resolved,

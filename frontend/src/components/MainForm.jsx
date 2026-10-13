@@ -6,8 +6,9 @@ import { getSynthesisFields, uploadSynthesisData } from '../services/api';
 const selectionKey = (row, field) => `${row}::${field}`;
 
 const MainForm = ({ userInfo, onUploadSuccess }) => {
-  const [synthesisFields, setSynthesisFields] = useState({});
+  const [synthesisCategories, setSynthesisCategories] = useState({});
   const [selectedProject, setSelectedProject] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedSynthesisType, setSelectedSynthesisType] = useState('');
   const [tableData, setTableData] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -20,7 +21,7 @@ const MainForm = ({ userInfo, onUploadSuccess }) => {
     const fetchFields = async () => {
       try {
         const response = await getSynthesisFields();
-        setSynthesisFields(response.fields);
+        setSynthesisCategories(response.categories);
       } catch (err) {
         console.error('Error fetching synthesis fields:', err);
         setError('Failed to load synthesis fields');
@@ -36,6 +37,14 @@ const MainForm = ({ userInfo, onUploadSuccess }) => {
     setConfirmDuplicates(false);
   };
 
+  const handleCategoryChange = (e) => {
+    setSelectedCategory(e.target.value);
+    setSelectedSynthesisType('');
+    setTableData([]);
+    setError('');
+    clearValidation();
+  };
+
   const handleSynthesisTypeChange = (e) => {
     setSelectedSynthesisType(e.target.value);
     setTableData([]);
@@ -48,6 +57,11 @@ const MainForm = ({ userInfo, onUploadSuccess }) => {
 
     if (!selectedProject) {
       setError('Please select a project');
+      return;
+    }
+
+    if (!selectedCategory) {
+      setError('Please select a synthesis category');
       return;
     }
 
@@ -69,6 +83,7 @@ const MainForm = ({ userInfo, onUploadSuccess }) => {
         orcid: userInfo.orcid,
         user_name: userInfo.name,
         project: selectedProject,
+        category: selectedCategory,
         synthesis_type: selectedSynthesisType,
         data: tableData,
         parent_selections: Object.entries(parentSelections).map(([key, unique_id]) => {
@@ -113,13 +128,15 @@ const MainForm = ({ userInfo, onUploadSuccess }) => {
   };
 
   const handleCancel = () => {
+    setSelectedCategory('');
     setSelectedSynthesisType('');
     setTableData([]);
     setError('');
     clearValidation();
   };
 
-  const currentFields = selectedSynthesisType ? synthesisFields[selectedSynthesisType] || [] : [];
+  const currentCategoryFields = selectedCategory ? synthesisCategories[selectedCategory] || {} : {};
+  const currentFields = selectedSynthesisType ? currentCategoryFields[selectedSynthesisType] || [] : [];
   const showTable = selectedSynthesisType && currentFields.length > 0;
 
   return (
@@ -151,15 +168,32 @@ const MainForm = ({ userInfo, onUploadSuccess }) => {
           </div>
 
           <div className="form-group">
+            <label htmlFor="category">Synthesis Category *</label>
+            <select
+              id="category"
+              value={selectedCategory}
+              onChange={handleCategoryChange}
+              disabled={loading || validation !== null}
+            >
+              <option value="">-- Select a category --</option>
+              {Object.keys(synthesisCategories).map((category) => (
+                <option key={category} value={category}>
+                  {category}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="form-group">
             <label htmlFor="synthesisType">Synthesis Type *</label>
             <select
               id="synthesisType"
               value={selectedSynthesisType}
               onChange={handleSynthesisTypeChange}
-              disabled={loading || validation !== null}
+              disabled={loading || validation !== null || !selectedCategory}
             >
               <option value="">-- Select synthesis type --</option>
-              {Object.keys(synthesisFields).map((type) => (
+              {Object.keys(currentCategoryFields).map((type) => (
                 <option key={type} value={type}>
                   {type}
                 </option>
