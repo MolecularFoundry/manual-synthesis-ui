@@ -40,13 +40,13 @@ const Summary = ({ message, summary, onAddMore, onLogout }) => {
                 {summary['Created Samples'].map((s) => (
                   <li key={s.unique_id}>
                     {s.sample_name} &mdash;{' '}
-                    <a
-                      href={`https://crucible-graph-explorer-776258882599.us-central1.run.app/MFP00000/sample-graph/${s.unique_id}`}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      {s.unique_id}
-                    </a>
+                    {s.explorer_url ? (
+                      <a href={s.explorer_url} target="_blank" rel="noreferrer">
+                        {s.unique_id}
+                      </a>
+                    ) : (
+                      s.unique_id
+                    )}
                   </li>
                 ))}
               </ul>

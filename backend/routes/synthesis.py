@@ -8,6 +8,7 @@ from models import (SynthesisFieldsResponse, SynthesisUploadRequest, SynthesisUp
                     AmbiguousParent, UnresolvedParent, ParentCandidate, DuplicateName)
 
 from crucible import CrucibleClient
+from crucible.config import get_graph_explorer_url
 from crucible.models import Dataset, Sample
 from crucible.utils import get_tz_isoformat
 
@@ -327,7 +328,11 @@ def upload_all_sample_synthesis_info(orcid, project, records, category, synthesi
                                   description=record['sample_description'],
                                   sample_type=synthesis_type.lower())
             sample_uuid = new_samp['unique_id']
-            created_samples.append({'sample_name': record['sample_name'], 'unique_id': sample_uuid})
+            created_samples.append({
+                'sample_name': record['sample_name'],
+                'unique_id': sample_uuid,
+                'explorer_url': f"{get_graph_explorer_url().rstrip('/')}/{project}/samples/{sample_uuid}",
+            })
 
             for field in parent_field_names:
                 parent_id = resolved.get((row, field))
