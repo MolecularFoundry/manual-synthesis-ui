@@ -116,6 +116,13 @@ const DataTable = ({ fields, onChange, operatorName }) => {
   }, [fields, onChange]);
 
   const handlePaste = useCallback((event) => {
+    // While a cell is being edited, its own input should receive the paste
+    // (e.g. pasting a single MFID into a cell) instead of this bulk-row
+    // paste handler hijacking it into a new row.
+    if (event.target && event.target.classList.contains('rdg-text-editor')) {
+      return;
+    }
+
     const pastedData = event.clipboardData.getData('text');
     const pastedRows = pastedData.split('\n').filter(row => row.trim());
 
