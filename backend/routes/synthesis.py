@@ -165,8 +165,11 @@ def add_synthesis_dataset(orcid, project, ds_record, synthesis_type, user_name, 
                      session_name=session_name,
                      timestamp=ds_record['timestamp'])
     keywords = [k for k in [synthesis_type, sample_name, session_name] if k is not None]
-    new_ds = client.datasets.create(ds_obj, scientific_metadata=ds_record, keywords=keywords)
-    client.samples.add_dataset(sample_id=sample_uuid, dataset_id=new_ds['created_record']['unique_id'])
+    new_ds = client.datasets.create(ds_obj, keywords=keywords)
+    dataset_mfid = new_ds['created_record']['unique_id']
+    # create() adds metadata with PATCH, which needs edit rights the service account lacks on datasets it creates for users
+    client._request('post', f'/resources/{dataset_mfid}/metadata', json=ds_record)
+    client.samples.add_dataset(sample_id=sample_uuid, dataset_id=dataset_mfid)
 
 
 def _candidate(sample):
