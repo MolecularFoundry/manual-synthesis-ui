@@ -67,25 +67,19 @@ SYNTHESIS_CATEGORIES = {
                 "Storage Location", "PS Autobot Recipe Filename"
             ],
         },
-        # Which columns hold parent references, and what sample_type those
-        # parents must be. A stock solution is always made from solid
+        # Which columns hold parent references, and what sample_type each one
+        # must resolve against. A stock solution is always made from solid
         # precursors; a precursor solution always from stock solutions.
         # Filtering the lookup by type removes most name collisions before
         # they can reach the user.
         "parents": {
             "Stock Solution": {
-                "parent_type": "solid precursor",
-                "fields": {
-                    "organic_salt_sp-id": "Organic Salt SP-ID",
-                    "metal_salt_sp-id": "Metal Salt SP-ID",
-                },
+                "organic_salt_sp-id": {"label": "Organic Salt SP-ID", "parent_type": "solid precursor"},
+                "metal_salt_sp-id": {"label": "Metal Salt SP-ID", "parent_type": "solid precursor"},
             },
             "Precursor Solution": {
-                "parent_type": "stock solution",
-                "fields": {
-                    "component_a_ss-id": "Component A SS-ID",
-                    "component_b_ss-id": "Component B SS-ID",
-                },
+                "component_a_ss-id": {"label": "Component A SS-ID", "parent_type": "stock solution"},
+                "component_b_ss-id": {"label": "Component B SS-ID", "parent_type": "stock solution"},
             },
         },
     },
@@ -112,24 +106,20 @@ SYNTHESIS_CATEGORIES = {
         },
         "parents": {
             "Stock Solution": {
-                "parent_type": "solid precursor",
-                "fields": {
-                    "metal_salt_sp-id": "Metal Salt SP-ID",
-                    "citric_acid_sp-id": "Citric Acid SP-ID",
-                },
+                "metal_salt_sp-id": {"label": "Metal Salt SP-ID", "parent_type": "solid precursor"},
+                "citric_acid_sp-id": {"label": "Citric Acid SP-ID", "parent_type": "solid precursor"},
             },
             "Precursor Solution": {
-                "parent_type": "stock solution",
-                "fields": {
-                    "mn_precursor_ss-id": "Mn Precursor SS-ID",
-                    "ca_precursor_ss-id": "Ca Precursor SS-ID",
-                    "sr_precursor_ss-id": "Sr Precursor SS-ID",
-                    "y_precursor_ss-id": "Y Precursor SS-ID",
-                    "fe_precursor_ss-id": "Fe Precursor SS-ID",
-                    "ti_precursor_ss-id": "Ti Precursor SS-ID",
-                    "citric_acid_ss-id": "Citric Acid SS-ID",
-                    "ethylene_glycol_ss-id": "Ethylene Glycol SS-ID",
-                },
+                "mn_precursor_ss-id": {"label": "Mn Precursor SS-ID", "parent_type": "stock solution"},
+                "ca_precursor_ss-id": {"label": "Ca Precursor SS-ID", "parent_type": "stock solution"},
+                "sr_precursor_ss-id": {"label": "Sr Precursor SS-ID", "parent_type": "stock solution"},
+                "y_precursor_ss-id": {"label": "Y Precursor SS-ID", "parent_type": "stock solution"},
+                "fe_precursor_ss-id": {"label": "Fe Precursor SS-ID", "parent_type": "stock solution"},
+                "ti_precursor_ss-id": {"label": "Ti Precursor SS-ID", "parent_type": "stock solution"},
+                # These two reference the original solid precursor containers
+                # directly, not a stock solution made from them.
+                "citric_acid_ss-id": {"label": "Citric Acid SS-ID", "parent_type": "solid precursor"},
+                "ethylene_glycol_ss-id": {"label": "Ethylene Glycol SS-ID", "parent_type": "solid precursor"},
             },
         },
     },
@@ -249,18 +239,20 @@ def validate_rows(records, project, category, synthesis_type, selections):
         if not parent_conf:
             continue
 
-        for field, field_label in parent_conf['fields'].items():
+        for field, field_conf in parent_conf.items():
+            field_label = field_conf['label']
+            parent_type = field_conf['parent_type']
             reference = record.get(field)
             if reference is None or not str(reference).strip():
                 continue
 
             chosen = selections.get((row, field))
-            if chosen and _selection_is_valid(chosen, project, parent_conf['parent_type']):
+            if chosen and _selection_is_valid(chosen, project, parent_type):
                 resolved[(row, field)] = chosen
                 continue
 
             parent_id, candidates = resolve_parent_reference(
-                reference, project, parent_conf['parent_type'])
+                reference, project, parent_type)
 
             if parent_id:
                 resolved[(row, field)] = parent_id
@@ -280,7 +272,7 @@ def validate_rows(records, project, category, synthesis_type, selections):
                     field=field,
                     field_label=field_label,
                     reference=str(reference).strip(),
-                    expected_type=parent_conf['parent_type'],
+                    expected_type=parent_type,
                 ))
 
     return resolved, ambiguous, unresolved, duplicates
@@ -301,7 +293,7 @@ def upload_all_sample_synthesis_info(orcid, project, records, category, synthesi
     logger.debug(f"Adding {len(records)} rows of {synthesis_type} dataset to project {project}")
 
     parent_conf = SYNTHESIS_CATEGORIES[category]["parents"].get(synthesis_type, {})
-    parent_field_names = list(parent_conf.get('fields', {}))
+    parent_field_names = list(parent_conf)
 
     # Rows whose parent reference matched nothing are skipped outright rather
     # than written without their genealogy.
