@@ -99,8 +99,8 @@ SYNTHESIS_CATEGORIES = {
                 "Target Total Volume (uL)", "Mn Precursor SS-ID", "Mn Precursor Volume uL",
                 "Ca Precursor SS-ID", "Ca Precursor Volume uL", "Sr Precursor SS-ID", "Sr Precursor Volume uL",
                 "Y Precursor SS-ID", "Y Precursor Volume uL", "Fe Precursor SS-ID", "Fe Precursor Volume uL",
-                "Ti Precursor SS-ID", "Ti Precursor Volume uL", "Citric Acid SS-ID",
-                "Citric Acid Precursor weight mg", "Ethylene Glycol SS-ID", "EG Volume uL",
+                "Ti Precursor SS-ID", "Ti Precursor Volume uL", "Citric Acid SP-ID",
+                "Citric Acid Precursor weight mg", "Ethylene Glycol SP-ID", "EG Volume uL",
                 "Storage Location", "Opentrons Recipe Filename"
             ],
         },
@@ -118,8 +118,8 @@ SYNTHESIS_CATEGORIES = {
                 "ti_precursor_ss-id": {"label": "Ti Precursor SS-ID", "parent_type": "stock solution"},
                 # These two reference the original solid precursor containers
                 # directly, not a stock solution made from them.
-                "citric_acid_ss-id": {"label": "Citric Acid SS-ID", "parent_type": "solid precursor"},
-                "ethylene_glycol_ss-id": {"label": "Ethylene Glycol SS-ID", "parent_type": "solid precursor"},
+                "citric_acid_sp-id": {"label": "Citric Acid SP-ID", "parent_type": "solid precursor"},
+                "ethylene_glycol_sp-id": {"label": "Ethylene Glycol SP-ID", "parent_type": "solid precursor"},
             },
         },
     },
