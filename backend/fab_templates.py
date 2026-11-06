@@ -398,6 +398,8 @@ WAFER_SPEC_STEP = {
 FAB_TEMPLATES = {
     "QCMF_Qubit_v1": {
         "name": "QCMF qubit wafer",
+        # Wafers go into their labeled box after this step.
+        "label_after_step": "native_oxide_removal",
         "wafer_options": {
             "wafer_type": ["qubit", "test"],
             "base_metal": ["Al", "NbN"],

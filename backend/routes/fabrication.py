@@ -241,6 +241,7 @@ async def get_traveler(wafer_id: str):
     return {
         "template_id": template_id,
         "template_name": template["name"],
+        "label_after_step": template.get("label_after_step"),
         "wafer": units[0],
         "wafer_options": wafer_options,
         "spec": (spec_record or {}).get("parameters") or {},

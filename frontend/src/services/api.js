@@ -44,4 +44,25 @@ export const uploadSynthesisData = async (uploadData) => {
   return response.data;
 };
 
+// ============================================================================
+// Fabrication Traveler API
+// ============================================================================
+
+export const getFabTemplates = async () => (await api.get('/fab/templates')).data;
+
+export const listWafers = async (project) =>
+  (await api.get('/fab/wafers', { params: { project } })).data;
+
+export const createWafer = async (body) => (await api.post('/fab/wafers', body)).data;
+
+export const getTraveler = async (waferId) =>
+  (await api.get(`/fab/wafers/${encodeURIComponent(waferId)}/traveler`)).data;
+
+export const recordStep = async (body) => (await api.post('/fab/steps', body)).data;
+
+export const listPrinters = async () => (await api.get('/fab/printers')).data;
+
+export const printCrucibleLabel = async (printerId, sampleId) =>
+  (await api.post('/fab/print', { printer_id: printerId, sample_id: sampleId })).data;
+
 export default api;
