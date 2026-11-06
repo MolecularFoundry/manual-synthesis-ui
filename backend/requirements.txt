@@ -1,6 +1,6 @@
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
-nano-crucible==3.2.1
+nano-crucible==3.3.0
 pydantic[email]
 pandas
 rdkit

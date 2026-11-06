@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Literal
 
 # ============================================================================
 # Authentication Models
@@ -84,3 +84,37 @@ class SynthesisUploadResponse(BaseModel):
     needs_selection: List[AmbiguousParent] = []
     unresolved_parents: List[UnresolvedParent] = []
     duplicate_names: List[DuplicateName] = []
+
+# ============================================================================
+# Fabrication Traveler Models
+# ============================================================================
+
+class WaferCreateRequest(BaseModel):
+    project: str
+    orcid: str
+    operator: str
+    template_id: str
+    wafer_name: str
+    description: str = ""
+    wafer_options: Dict[str, str]
+    spec: Dict[str, Any] = {}
+    step_date: Optional[str] = None
+
+class StepRecordRequest(BaseModel):
+    template_id: str
+    step_id: str
+    wafer_id: str
+    project: str
+    orcid: str
+    operator: str
+    target_ids: List[str]
+    status: Literal["done", "skipped"]
+    step_date: str
+    parameters: Dict[str, Any] = {}
+    comments: Optional[str] = None
+    # For create_chiplets / create_chips steps: parent unique_id -> new child names.
+    new_children: Dict[str, List[str]] = {}
+
+class PrintLabelRequest(BaseModel):
+    printer_id: str
+    sample_id: str

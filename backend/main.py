@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from routes import auth, synthesis
+from routes import auth, synthesis, fabrication
 import logging
 
 # Configure logging
@@ -25,6 +25,7 @@ app.add_middleware(
 # Include routers
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(synthesis.router, prefix="/api/synthesis", tags=["synthesis"])
+app.include_router(fabrication.router, prefix="/api/fab", tags=["fabrication"])
 
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
