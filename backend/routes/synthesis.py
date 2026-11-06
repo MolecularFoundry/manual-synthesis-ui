@@ -159,7 +159,7 @@ def add_synthesis_dataset(orcid, project, ds_record, synthesis_type, user_name, 
     dataset_mfid = new_ds['created_record']['unique_id']
     # create() adds metadata with PATCH, which needs edit rights the service account lacks on datasets it creates for users
     client._request('post', f'/resources/{dataset_mfid}/metadata', json=ds_record)
-    client.samples.add_dataset(sample_id=sample_uuid, dataset_id=dataset_mfid)
+    client.samples.link_dataset(sample_uuid, dataset_mfid)
 
 
 def _candidate(sample):
