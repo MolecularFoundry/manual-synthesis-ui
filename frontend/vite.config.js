@@ -8,9 +8,11 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api': {
+      // `base` applies in dev too, so API calls arrive prefixed like they do behind nginx.
+      '/manual-synthesis/api': {
         target: 'http://localhost:8000',
         changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/manual-synthesis/, ''),
       }
     }
   }

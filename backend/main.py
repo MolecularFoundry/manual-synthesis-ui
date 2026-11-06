@@ -28,7 +28,8 @@ app.include_router(synthesis.router, prefix="/api/synthesis", tags=["synthesis"]
 app.include_router(fabrication.router, prefix="/api/fab", tags=["fabrication"])
 
 
-app.mount("/", StaticFiles(directory="static", html=True), name="static")
+# check_dir=False: local dev serves the frontend from Vite, so static/ may not exist.
+app.mount("/", StaticFiles(directory="static", html=True, check_dir=False), name="static")
 
 @app.get("/")
 async def root():
