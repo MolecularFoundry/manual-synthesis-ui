@@ -1,14 +1,18 @@
 import logging
+import os
 import re
+import tempfile
 from concurrent.futures import ThreadPoolExecutor
 
-from fastapi import APIRouter, HTTPException
+from typing import List
+
+from fastapi import APIRouter, HTTPException, UploadFile, File
 
 from crucible.models import Dataset
 from crucible.utils import get_tz_isoformat
 
 from fab_templates import FAB_TEMPLATES, get_step, step_applies
-from models import WaferCreateRequest, StepRecordRequest, PrintLabelRequest
+from models import WaferCreateRequest, StepRecordRequest, StepEditRequest, PrintLabelRequest
 from routes.synthesis import client, add_sample, get_graph_explorer_url
 
 logger = logging.getLogger(__name__)
@@ -17,6 +21,8 @@ router = APIRouter()
 PRINTER_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 CHILD_TYPE = {"create_chiplets": "chiplet", "create_chips": "chip"}
 ALLOWED_PARENT_TYPES = {"create_chiplets": {"wafer"}, "create_chips": {"wafer", "chiplet"}}
+SUBSTEP_FIELDS = ("params", "temp", "time", "tool", "specs", "comment")
+MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # Cloud Run caps request bodies at 32 MB
 
 
 def explorer_url(project, unique_id):
@@ -50,6 +56,24 @@ def clean_parameters(step, values):
             cleaned[key] = int(number) if number.is_integer() else number
         else:
             cleaned[key] = str(value).strip()
+    return cleaned
+
+
+def clean_substeps(step, values):
+    """Sub-step details are editable; their order and process names come from the template."""
+    template_substeps = step["substeps"]
+    if values is None:
+        return [dict(s) for s in template_substeps]
+    if len(values) != len(template_substeps):
+        raise HTTPException(status_code=400, detail=f"{step['label']} expects {len(template_substeps)} sub-steps")
+    cleaned = []
+    for template_sub, value in zip(template_substeps, values):
+        entry = {"process": template_sub["process"]}
+        for field in SUBSTEP_FIELDS:
+            text_value = str(value.get(field) or "").strip()
+            if text_value:
+                entry[field] = text_value
+        cleaned.append(entry)
     return cleaned
 
 
@@ -102,6 +126,10 @@ def collect_records(units, template_id):
                     "operator": meta.get("operator"),
                     "parameters": meta.get("parameters") or {},
                     "comments": meta.get("comments"),
+                    "substeps": meta.get("substeps") or [],
+                    "created_children": meta.get("created_children"),
+                    "edited_by": meta.get("edited_by"),
+                    "edited_at": meta.get("edited_at"),
                     "wafer_options": meta.get("wafer_options"),
                     "unit_ids": [],
                 })
@@ -151,7 +179,8 @@ def create_step_dataset(project, orcid, template_id, step, wafer, metadata, targ
     return dataset_id, link_errors
 
 
-def step_metadata(template_id, step, wafer, req_status, step_date, operator, parameters, comments, **extra):
+def step_metadata(template_id, step, wafer, req_status, step_date, operator, parameters, substeps, comments,
+                  **extra):
     return {
         "fab_template": template_id,
         "fab_step_id": step["id"],
@@ -163,7 +192,7 @@ def step_metadata(template_id, step, wafer, req_status, step_date, operator, par
         "wafer_id": wafer["unique_id"],
         "wafer_name": wafer["sample_name"],
         "parameters": parameters,
-        "substeps": step["substeps"],
+        "substeps": substeps,
         "comments": comments,
         **extra,
     }
@@ -210,7 +239,7 @@ async def create_wafer(req: WaferCreateRequest):
     wafer = {"unique_id": new_wafer["unique_id"], "sample_name": name}
     step_date = req.step_date or get_tz_isoformat()[:10]
     metadata = step_metadata(req.template_id, spec_step, wafer, "done", step_date, req.operator,
-                             spec, None, wafer_options=wafer_options)
+                             spec, [], None, wafer_options=wafer_options)
     dataset_id, link_errors = create_step_dataset(req.project, req.orcid, req.template_id, spec_step,
                                                   wafer, metadata, [wafer["unique_id"]])
     return {"wafer": {**wafer, "explorer_url": explorer_url(req.project, wafer["unique_id"])},
@@ -279,6 +308,7 @@ async def record_step(req: StepRecordRequest):
         raise HTTPException(status_code=400, detail=f"Not part of this wafer: {outside}")
 
     parameters = clean_parameters(step, req.parameters) if req.status == "done" else {}
+    substeps = clean_substeps(step, req.substeps)
 
     created = []
     errors = []
@@ -322,7 +352,7 @@ async def record_step(req: StepRecordRequest):
         target_ids = list(dict.fromkeys(p for p, _ in planned))
 
     metadata = step_metadata(req.template_id, step, wafer, req.status, req.step_date, req.operator,
-                             parameters, req.comments, created_children=created or None)
+                             parameters, substeps, req.comments, created_children=created or None)
     dataset_id, link_errors = create_step_dataset(req.project, req.orcid, req.template_id, step,
                                                   wafer, metadata, target_ids)
     errors.extend(link_errors)
@@ -351,3 +381,91 @@ async def print_label(req: PrintLabelRequest):
     status = result.get("status")
     return {"success": status == "ok", "status": status,
             "detail": result.get("detail") or (None if status == "ok" else f"Printer reported status={status}")}
+
+
+def http_status(err):
+    response = getattr(err, "response", None)
+    return getattr(response, "status_code", None)
+
+
+def load_step_record(dataset_id):
+    try:
+        ds = client.datasets.get(dataset_id, include_metadata=True)
+    except Exception:
+        ds = None
+    meta = (ds or {}).get("scientific_metadata") or {}
+    template_id = meta.get("fab_template")
+    step = get_step(template_id, meta.get("fab_step_id")) if template_id in FAB_TEMPLATES else None
+    if not step:
+        raise HTTPException(status_code=404, detail=f"No traveler step record {dataset_id}")
+    return meta, step
+
+
+@router.get("/steps/{dataset_id}")
+async def get_step_record(dataset_id: str):
+    meta, step = load_step_record(dataset_id)
+    files = client.datasets.list_files(dataset_id)
+    try:
+        links = client.datasets.get_download_links(dataset_id) if files else {}
+    except Exception as err:
+        logger.warning(f"Download links for {dataset_id} unavailable: {err}")
+        links = {}
+    return {
+        "dataset_id": dataset_id,
+        "step": step,
+        "record": meta,
+        "files": [{"mfid": f.get("mfid"), "filename": f.get("filename"), "size": f.get("size"),
+                   "url": links.get(f.get("mfid"))} for f in files],
+    }
+
+
+@router.put("/steps/{dataset_id}")
+async def edit_step_record(dataset_id: str, req: StepEditRequest):
+    meta, step = load_step_record(dataset_id)
+    updated = {
+        **meta,
+        "step_date": req.step_date,
+        "parameters": clean_parameters(step, req.parameters) if meta.get("status") == "done" else {},
+        "substeps": clean_substeps(step, req.substeps),
+        "comments": req.comments,
+        "edited_by": req.operator,
+        "edited_at": get_tz_isoformat(),
+    }
+    try:
+        client.datasets.update_scientific_metadata(dataset_id, updated, overwrite=True)
+    except Exception as err:
+        if http_status(err) == 403:
+            raise HTTPException(status_code=403,
+                                detail="Editing needs edit permission for the app's service account "
+                                       "on this Crucible project. Ask a Crucible admin to grant it.")
+        raise
+    return {"success": True, "record": updated}
+
+
+@router.post("/steps/{dataset_id}/files")
+async def upload_step_files(dataset_id: str, files: List[UploadFile] = File(...)):
+    _, step = load_step_record(dataset_id)
+    if not step.get("allow_files"):
+        raise HTTPException(status_code=400, detail=f"{step['label']} does not take file attachments")
+
+    uploaded, errors = [], []
+    with tempfile.TemporaryDirectory() as tmp:
+        for upload in files:
+            filename = os.path.basename(upload.filename or "").strip()
+            if not filename or filename in (".", ".."):
+                errors.append("A file without a name was skipped")
+                continue
+            content = await upload.read()
+            if len(content) > MAX_UPLOAD_BYTES:
+                errors.append(f"{filename}: larger than {MAX_UPLOAD_BYTES // (1024 * 1024)} MB")
+                continue
+            path = os.path.join(tmp, filename)
+            with open(path, "wb") as fh:
+                fh.write(content)
+            try:
+                client.datasets.add_file(dataset_id, path, skip_ingestion=True)
+                uploaded.append(filename)
+            except Exception as err:
+                logger.error(f"Uploading {filename} to {dataset_id} failed: {err}")
+                errors.append(f"{filename}: {err}")
+    return {"success": not errors, "uploaded": uploaded, "errors": errors}

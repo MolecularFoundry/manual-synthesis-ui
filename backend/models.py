@@ -111,9 +111,19 @@ class StepRecordRequest(BaseModel):
     status: Literal["done", "skipped"]
     step_date: str
     parameters: Dict[str, Any] = {}
+    # Edited copy of the template's substeps (same order); None keeps the template's.
+    substeps: Optional[List[Dict[str, Any]]] = None
     comments: Optional[str] = None
     # For create_chiplets / create_chips steps: parent unique_id -> new child names.
     new_children: Dict[str, List[str]] = {}
+
+class StepEditRequest(BaseModel):
+    orcid: str
+    operator: str
+    step_date: str
+    parameters: Dict[str, Any] = {}
+    substeps: Optional[List[Dict[str, Any]]] = None
+    comments: Optional[str] = None
 
 class PrintLabelRequest(BaseModel):
     printer_id: str

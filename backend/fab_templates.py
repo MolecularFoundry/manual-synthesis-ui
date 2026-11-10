@@ -17,7 +17,7 @@ def sub(process, **details):
 
 DESCUM_SUBSTEPS = [
     sub("Load wafer"),
-    sub("O2 descum", comment="strike + etch steps"),
+    sub("O2 descum", comment="strike step, then etch step"),
     sub("Unload wafer"),
     sub("Chamber clean with cleaning wafer", time="30 mins", comment="Recipe name = CHAMBER CLEAN WITH WAFER"),
     sub("Microscope inspection"),
@@ -29,7 +29,8 @@ DESCUM_PARAMETERS = [
     num("icp_power_w", "ICP power", "W", 0),
     num("pressure_mtorr", "Pressure", "mTorr", 80),
     num("o2_flow_sccm", "O2 flow", "sccm", 100),
-    num("etch_time_s", "Etch time (strike + etch)", "s", 25),
+    num("strike_time_s", "Strike time", "s", 5),
+    num("etch_time_s", "Etch time", "s", 20),
 ]
 
 QCMF_QUBIT_V1_STEPS = [
@@ -65,7 +66,7 @@ QCMF_QUBIT_V1_STEPS = [
         ],
     },
     {
-        "id": "native_oxide_removal", "label": "Step 2", "name": "Native oxide removal",
+        "id": "native_oxide_removal", "allow_files": True, "label": "Step 2", "name": "Native oxide removal",
         "optional": False, "condition": None, "tool": "HF Bench", "action": None,
         "substeps": [
             sub("BOE dip", params="10:1 mixture", temp="RT", tool="HF Bench"),
@@ -78,8 +79,8 @@ QCMF_QUBIT_V1_STEPS = [
         "parameters": [num("boe_time_s", "BOE dip time", "s", 60)],
     },
     {
-        "id": "al_deposition", "label": "Step 3A", "name": "Al deposition (e-beam evaporation)",
-        "optional": False, "condition": {"base_metal": "Al"}, "tool": "E-beam evaporator", "action": None,
+        "id": "ebeam_evaporation", "label": "Step 3A", "name": "E-beam evaporation",
+        "optional": True, "condition": None, "tool": "E-beam evaporator", "action": None,
         "substeps": [
             sub("Load wafer into loadlock"),
             sub("Precondition"), sub("Autotune"), sub("Stabilize"), sub("Deposit"), sub("Postcondition"),
@@ -96,9 +97,9 @@ QCMF_QUBIT_V1_STEPS = [
         ],
     },
     {
-        "id": "nbn_deposition", "label": "Step 3B", "name": "NbN deposition (reactive sputtering)",
-        "optional": False, "condition": {"base_metal": "NbN"}, "tool": "Sputter", "action": None,
-        "substeps": [sub("Load wafer"), sub("NbN deposition"), sub("Unload wafer")],
+        "id": "sputtering", "label": "Step 3B", "name": "Sputtering",
+        "optional": True, "condition": None, "tool": "Sputter", "action": None,
+        "substeps": [sub("Load wafer"), sub("Deposition"), sub("Unload wafer")],
         "parameters": [
             text("recipe", "Recipe name"),
             text("target", "Target"),
@@ -133,7 +134,7 @@ QCMF_QUBIT_V1_STEPS = [
         ],
     },
     {
-        "id": "exposure", "label": "Step 5", "name": "Exposure",
+        "id": "exposure", "allow_files": True, "label": "Step 5", "name": "Exposure",
         "optional": False, "condition": None, "tool": "MLA", "action": None,
         "substeps": [sub("Calibrate dose"), sub("Expose", tool="MLA", comment="Can vary based on the dose test")],
         "parameters": [
@@ -153,14 +154,14 @@ QCMF_QUBIT_V1_STEPS = [
         "parameters": [num("mf26a_time_s", "MF 26A time", "s", 30)],
     },
     {
-        "id": "o2_descum", "label": "Step 7", "name": "O2 descum",
+        "id": "o2_descum", "allow_files": True, "label": "Step 7", "name": "O2 descum",
         "optional": False, "condition": None, "tool": "Oxford ICP chlorine", "action": None,
         "substeps": DESCUM_SUBSTEPS,
         "parameters": DESCUM_PARAMETERS,
     },
     {
-        "id": "al_wet_etch", "label": "Step 8A", "name": "Wet etch (Al base metal)",
-        "optional": False, "condition": {"base_metal": "Al"}, "tool": "Acid bench", "action": None,
+        "id": "wet_etch", "allow_files": True, "label": "Step 8A", "name": "Wet etch",
+        "optional": True, "condition": None, "tool": "Acid bench", "action": None,
         "substeps": [
             sub("Phosphoric acid / Al etchant", temp="RT", tool="Acid bench",
                 comment="Etch rates vary based on thickness and sample size"),
@@ -171,8 +172,8 @@ QCMF_QUBIT_V1_STEPS = [
         "parameters": [num("etch_time_min", "Etch time", "min", 7)],
     },
     {
-        "id": "nbn_dry_etch", "label": "Step 8B", "name": "Dry etch (NbN base metal)",
-        "optional": False, "condition": {"base_metal": "NbN"}, "tool": "Oxford ICP fluorine", "action": None,
+        "id": "dry_etch", "allow_files": True, "label": "Step 8B", "name": "Dry etch",
+        "optional": True, "condition": None, "tool": "Oxford ICP fluorine", "action": None,
         "substeps": [
             sub("Load wafer"), sub("CF4 etch", comment="Time calculated from etch rate and thickness"),
             sub("Unload wafer"),
@@ -190,10 +191,10 @@ QCMF_QUBIT_V1_STEPS = [
     },
     {
         # The sheet lists O2 descum values here; confirm the real trench recipe.
-        "id": "wafer_trench", "label": "Step 9", "name": "Wafer trench (Al base metal)",
-        "optional": False, "condition": {"base_metal": "Al"}, "tool": "Oxford ICP fluorine", "action": None,
+        "id": "wafer_trench", "label": "Step 9", "name": "Wafer trench",
+        "optional": True, "condition": None, "tool": "Oxford ICP fluorine", "action": None,
         "substeps": [
-            sub("Load wafer"), sub("Trench etch"), sub("Unload wafer"),
+            sub("Load wafer"), sub("Trench etch step 1"), sub("Trench etch step 2"), sub("Unload wafer"),
             sub("Chamber clean with cleaning wafer", time="30 mins"),
             sub("Microscope inspection"),
         ],
@@ -203,7 +204,8 @@ QCMF_QUBIT_V1_STEPS = [
             num("icp_power_w", "ICP power", "W", 0),
             num("pressure_mtorr", "Pressure", "mTorr", 80),
             num("gas_flow_sccm", "Gas flow", "sccm", 100),
-            num("etch_time_s", "Etch time", "s", 25),
+            num("etch1_time_s", "Etch step 1 time", "s", 5),
+            num("etch2_time_s", "Etch step 2 time", "s", 20),
         ],
     },
     {
@@ -238,7 +240,7 @@ QCMF_QUBIT_V1_STEPS = [
         ],
     },
     {
-        "id": "jj_resist_spin", "label": "Step 11", "name": "JJ e-beam resist spin",
+        "id": "jj_resist_spin", "allow_files": True, "label": "Step 11", "name": "JJ e-beam resist spin",
         "optional": False, "condition": None, "tool": "E-beam spinner / Oven", "action": None,
         "substeps": [
             sub("Dehydration bake", temp="100C", time="3 mins", tool="CEE hotplate", comment="Program 100C_180s"),
@@ -280,19 +282,19 @@ QCMF_QUBIT_V1_STEPS = [
         "parameters": [num("mibk_ipa_time_s", "MIBK:IPA time", "s", 60)],
     },
     {
-        "id": "cut_chiplets", "label": "Step 13b", "name": "Cut into chiplets",
+        "id": "cut_chiplets", "label": "Step 14", "name": "Cut into chiplets",
         "optional": True, "condition": None, "tool": "Dicing saw", "action": "create_chiplets",
         "substeps": [sub("Cut wafer into chiplets")],
         "parameters": [],
     },
     {
-        "id": "jj_o2_descum", "label": "Step 14", "name": "JJ O2 descum",
+        "id": "jj_o2_descum", "allow_files": True, "label": "Step 15", "name": "JJ O2 descum",
         "optional": False, "condition": None, "tool": "Oxford ICP chlorine", "action": None,
         "substeps": DESCUM_SUBSTEPS,
         "parameters": DESCUM_PARAMETERS,
     },
     {
-        "id": "jj_native_oxide_removal", "label": "Step 15", "name": "JJ native oxide removal",
+        "id": "jj_native_oxide_removal", "label": "Step 16", "name": "JJ native oxide removal",
         "optional": True, "condition": None, "tool": "HF Bench", "action": None,
         "substeps": [
             sub("Al PAD etch 639", temp="RT", tool="HF Bench"),
@@ -305,7 +307,7 @@ QCMF_QUBIT_V1_STEPS = [
         "parameters": [num("etch_time_s", "Etch time", "s", 10)],
     },
     {
-        "id": "jj_deposition", "label": "Step 16", "name": "JJ deposition (pDolan)",
+        "id": "jj_deposition", "allow_files": True, "label": "Step 17", "name": "JJ deposition (pDolan)",
         "optional": False, "condition": None, "tool": "Plassys", "action": None,
         "substeps": [
             sub("Load wafer into loadlock", specs="With right orientation"),
@@ -337,7 +339,7 @@ QCMF_QUBIT_V1_STEPS = [
         ],
     },
     {
-        "id": "predicing_resist", "label": "Step 17", "name": "Resist coating (pre-dicing)",
+        "id": "predicing_resist", "label": "Step 18", "name": "Resist coating (pre-dicing)",
         "optional": False, "condition": None, "tool": "CEE hotplate", "action": None,
         "substeps": [
             sub("Spincoat", specs="Program 5", comment="No prebake to avoid heating JJs"),
@@ -353,13 +355,13 @@ QCMF_QUBIT_V1_STEPS = [
         ],
     },
     {
-        "id": "dicing", "label": "Step 18", "name": "Dicing into chips",
+        "id": "dicing", "label": "Step 19", "name": "Dicing into chips",
         "optional": False, "condition": None, "tool": "Dicing saw", "action": "create_chips",
         "substeps": [sub("Dicing")],
         "parameters": [text("dicing_location", "Dicing location", "Marvell")],
     },
     {
-        "id": "jj_liftoff", "label": "Step 19", "name": "JJ liftoff",
+        "id": "jj_liftoff", "label": "Step 20", "name": "JJ liftoff",
         "optional": False, "condition": None, "tool": "Hotplate / Sonicator", "action": None,
         "substeps": [
             sub("NMP 1", tool="Hotplate", specs="Mild pipetting to remove metal",
@@ -372,12 +374,12 @@ QCMF_QUBIT_V1_STEPS = [
         ],
         "parameters": [
             num("nmp_temp_c", "NMP temperature", "C", 80),
-            num("nmp_time_h", "NMP time", "h", 2),
+            num("nmp_time_min", "NMP time", "min", 120),
             num("sonication_time_s", "Sonication time", "s", 15),
         ],
     },
     {
-        "id": "jj_post_clean", "label": "Step 20", "name": "JJ post clean",
+        "id": "jj_post_clean", "label": "Step 21", "name": "JJ post clean",
         "optional": True, "condition": None, "tool": None, "action": None,
         "substeps": [],
         "parameters": [],
@@ -390,6 +392,7 @@ WAFER_SPEC_STEP = {
     "parameters": [
         text("substrate_material", "Substrate material", "Silicon 001"),
         text("substrate_spec", "Substrate specification", "Res >20000 kOhm DSP 550um thick SSP"),
+        text("base_metal", "Base metal"),
         text("batch_number", "Batch number"),
         text("gds_file", "GDS file name / link"),
     ],
@@ -402,7 +405,6 @@ FAB_TEMPLATES = {
         "label_after_step": "native_oxide_removal",
         "wafer_options": {
             "wafer_type": ["qubit", "test"],
-            "base_metal": ["Al", "NbN"],
         },
         "wafer_spec": WAFER_SPEC_STEP,
         "steps": QCMF_QUBIT_V1_STEPS,

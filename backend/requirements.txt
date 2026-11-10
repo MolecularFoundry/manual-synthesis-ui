@@ -4,3 +4,4 @@ nano-crucible==3.3.0
 pydantic[email]
 pandas
 rdkit
+python-multipart
