@@ -22,6 +22,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# index.html must be revalidated so browsers pick up new deploys; the hashed
+# JS/CSS assets it points to can stay cached.
+@app.middleware("http")
+async def no_cache_html(request, call_next):
+    response = await call_next(request)
+    if response.headers.get("content-type", "").startswith("text/html"):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
 # Include routers
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(synthesis.router, prefix="/api/synthesis", tags=["synthesis"])
