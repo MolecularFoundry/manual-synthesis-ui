@@ -10,9 +10,9 @@ const DEFAULT_CHECKED = new Set([
 ]);
 
 const LABEL_STYLE =
-  '#label-print{width:6cm;font-size:12px;font-family:Times New Roman,serif;padding:5px;background:white;' +
-  'overflow-wrap:break-word}#label-print p{margin:0}.label-qr{float:right;width:1.6cm;height:1.6cm;margin-left:4px}' +
-  '.label-notes{white-space:pre-wrap}';
+  'body{margin:0}#label-print{width:6cm;font-size:12px;font-family:Times New Roman,serif;padding:5px;' +
+  'background:white;overflow-wrap:break-word}#label-print p{margin:0}' +
+  '.label-qr{float:right;width:1.6cm;height:1.6cm;margin-left:4px}.label-notes{white-space:pre-wrap}';
 
 const escapeHtml = (s) =>
   String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -65,27 +65,24 @@ const ProcessLabel = ({ traveler, onClose }) => {
       return next;
     });
 
+  // Print from a hidden iframe holding only the label: its load event fires
+  // reliably (unlike a document.write'd pop-up, whose print() Chrome can defer
+  // forever) and only the label ends up on the page.
   const print = () => {
+    const frame = document.createElement('iframe');
+    frame.setAttribute('aria-hidden', 'true');
+    frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
     // innerHTML of the React-rendered preview is already escaped.
-    const win = window.open('', '_blank');
-    if (!win) {
-      setToast('The browser blocked the print window. Allow pop-ups for this site and try again.');
-      setTimeout(() => setToast(''), 5000);
-      return;
-    }
-    win.document.write(`<html><head><title>${escapeHtml(traveler.wafer.sample_name)}</title><style>${LABEL_STYLE}</style></head><body>`);
-    win.document.write(`<div id="label-print">${labelRef.current.innerHTML}</div></body></html>`);
-    win.document.close();
-    // The written document has usually finished loading by now, so a load
-    // handler would never fire; wait for the QR image instead, then print.
-    const pending = Array.from(win.document.images)
-      .filter((img) => !img.complete)
-      .map((img) => new Promise((resolve) => { img.onload = resolve; img.onerror = resolve; }));
-    Promise.all(pending).then(() => {
+    frame.srcdoc = `<!doctype html><html><head><title>${escapeHtml(traveler.wafer.sample_name)}</title>` +
+      `<style>${LABEL_STYLE}</style></head><body><div id="label-print">${labelRef.current.innerHTML}</div></body></html>`;
+    frame.onload = () => {
+      const win = frame.contentWindow;
+      win.addEventListener('afterprint', () => frame.remove(), { once: true });
       win.focus();
       win.print();
-      win.close();
-    });
+      setTimeout(() => frame.isConnected && frame.remove(), 60000);
+    };
+    document.body.appendChild(frame);
   };
 
   const capture = async () => {
