@@ -11,7 +11,7 @@ const DEFAULT_CHECKED = new Set([
 
 const LABEL_STYLE =
   'body{margin:0}#label-print{width:6cm;font-size:12px;font-family:Times New Roman,serif;padding:5px;' +
-  'background:white;overflow-wrap:break-word}#label-print p{margin:0}' +
+  'border:2px solid black;background:white;overflow-wrap:break-word;overflow:hidden}#label-print p{margin:0}' +
   '.label-qr{float:right;width:1.6cm;height:1.6cm;margin-left:4px}.label-notes{white-space:pre-wrap}';
 
 const escapeHtml = (s) =>
