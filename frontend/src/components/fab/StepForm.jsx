@@ -1,35 +1,60 @@
-import { useState } from 'react';
-import { recordStep } from '../../services/api';
+import { useState, useEffect } from 'react';
+import { recordStep, editStepRecord, getStepRecord, uploadStepFiles } from '../../services/api';
 
 const ALLOWED_PARENTS = { create_chiplets: ['wafer'], create_chips: ['wafer', 'chiplet'] };
 const CHILD_SUFFIX = { create_chiplets: 'CL', create_chips: 'C' };
+const SUBSTEP_FIELDS = [
+  ['params', 'Parameters'], ['temp', 'Temp'], ['time', 'Time'],
+  ['tool', 'Tool'], ['specs', 'Tool specs'], ['comment', 'Comment'],
+];
 const today = () => new Date().toISOString().split('T')[0];
 
 const childNames = (parentName, suffix, count) =>
   Array.from({ length: count }, (_, i) => `${parentName}_${suffix}${String(i + 1).padStart(2, '0')}`);
 
-const StepForm = ({ step, traveler, project, userInfo, earlierPending, onClose, onRecorded }) => {
+const errorText = (err, fallback) => err.response?.data?.detail || fallback;
+
+// `record` set = view/edit an existing entry; otherwise record a new one.
+const StepForm = ({ step, record, traveler, project, userInfo, earlierPending = [], onClose, onRecorded }) => {
+  const editing = Boolean(record);
   const { units, wafer, template_id: templateId } = traveler;
-  const action = step.action;
+  const action = editing ? null : step.action;
   const leafUnits = units.filter((u) => u.is_leaf);
   const parentCandidates = action
     ? leafUnits.filter((u) => ALLOWED_PARENTS[action].includes(u.sample_type))
     : [];
+  const showParams = !editing || record.status === 'done';
 
-  const [params, setParams] = useState(
-    Object.fromEntries(step.parameters.map((p) => [p.key, p.default ?? '']))
+  const [params, setParams] = useState(() =>
+    Object.fromEntries(step.parameters.map((p) => {
+      const value = editing ? record.parameters?.[p.key] : p.default;
+      return [p.key, value ?? ''];
+    }))
   );
-  const [date, setDate] = useState(today());
-  const [comments, setComments] = useState('');
+  const [substeps, setSubsteps] = useState(() => {
+    const saved = editing && record.substeps?.length === step.substeps.length ? record.substeps : step.substeps;
+    return saved.map((s) => ({ ...s }));
+  });
+  const [date, setDate] = useState(editing ? record.step_date || today() : today());
+  const [comments, setComments] = useState(editing ? record.comments || '' : '');
   const [targets, setTargets] = useState(
     action ? parentCandidates.map((u) => u.unique_id) : leafUnits.map((u) => u.unique_id)
   );
-  const [children, setChildren] = useState(
+  const [children, setChildren] = useState(() =>
     Object.fromEntries(parentCandidates.map((u) => [u.unique_id, childNames(u.sample_name, CHILD_SUFFIX[action], 4)]))
   );
+  const [newFiles, setNewFiles] = useState([]);
+  const [attached, setAttached] = useState(null);
   const [error, setError] = useState('');
-  const [result, setResult] = useState(null);
+  const [problems, setProblems] = useState(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!editing) return;
+    getStepRecord(record.dataset_id)
+      .then((res) => setAttached(res.files))
+      .catch(() => setAttached([]));
+  }, [editing, record]);
 
   const toggleTarget = (id) =>
     setTargets((prev) => (prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id]));
@@ -41,79 +66,98 @@ const StepForm = ({ step, traveler, project, userInfo, earlierPending, onClose, 
     }));
 
   const setChildName = (parentId, idx, name) =>
-    setChildren((prev) => ({
-      ...prev,
-      [parentId]: prev[parentId].map((n, i) => (i === idx ? name : n)),
-    }));
+    setChildren((prev) => ({ ...prev, [parentId]: prev[parentId].map((n, i) => (i === idx ? name : n)) }));
+
+  const setSubstepField = (idx, field, value) =>
+    setSubsteps((prev) => prev.map((s, i) => (i === idx ? { ...s, [field]: value } : s)));
+
+  const uploadFiles = async (datasetId) => {
+    if (!newFiles.length) return [];
+    try {
+      return (await uploadStepFiles(datasetId, newFiles)).errors;
+    } catch (err) {
+      return [errorText(err, 'File upload failed')];
+    }
+  };
 
   const submit = async (status) => {
     setLoading(true);
     setError('');
     try {
-      const res = await recordStep({
-        template_id: templateId,
-        step_id: step.id,
-        wafer_id: wafer.unique_id,
-        project,
-        orcid: userInfo.orcid,
-        operator: userInfo.name,
-        target_ids: targets,
-        status,
-        step_date: date,
-        parameters: status === 'done' ? params : {},
-        comments,
-        new_children: action && status === 'done'
-          ? Object.fromEntries(targets.map((t) => [t, children[t] || []]))
-          : {},
-      });
-      if (res.success) {
-        await onRecorded();
+      let datasetId;
+      let issues = [];
+      if (editing) {
+        await editStepRecord(record.dataset_id, {
+          orcid: userInfo.orcid,
+          operator: userInfo.name,
+          step_date: date,
+          parameters: showParams ? params : {},
+          substeps,
+          comments,
+        });
+        datasetId = record.dataset_id;
       } else {
-        setResult(res);
+        const res = await recordStep({
+          template_id: templateId,
+          step_id: step.id,
+          wafer_id: wafer.unique_id,
+          project,
+          orcid: userInfo.orcid,
+          operator: userInfo.name,
+          target_ids: targets,
+          status,
+          step_date: date,
+          parameters: status === 'done' ? params : {},
+          substeps,
+          comments,
+          new_children: action && status === 'done'
+            ? Object.fromEntries(targets.map((t) => [t, children[t] || []]))
+            : {},
+        });
+        datasetId = res.dataset_id;
+        issues = res.errors;
+      }
+      issues = [...issues, ...(await uploadFiles(datasetId))];
+      if (issues.length) {
+        setProblems(issues);
+      } else {
+        await onRecorded();
       }
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to record step');
+      setError(errorText(err, editing ? 'Failed to save changes' : 'Failed to record step'));
     } finally {
       setLoading(false);
     }
   };
 
   const selectable = action ? parentCandidates : units;
+  const unitName = Object.fromEntries(units.map((u) => [u.unique_id, u.sample_name]));
 
   return (
     <div className="modal-backdrop">
       <div className="modal-panel">
         <div className="traveler-header">
-          <h3>{step.label} — {step.name}</h3>
+          <h3>{step.label} — {step.name}{editing ? ' (view / edit)' : ''}</h3>
           <button className="btn btn-secondary btn-small" onClick={onClose} disabled={loading}>Close</button>
         </div>
         {step.tool && <p className="muted">Tool: {step.tool}</p>}
 
-        {earlierPending.length > 0 && (
+        {editing && (
+          <p className="muted">
+            {record.status === 'skipped' ? 'Skipped' : 'Recorded'} by {record.operator || 'unknown'}
+            {' · '}applies to {record.unit_ids.map((id) => unitName[id] || id).join(', ')}
+            {record.edited_by && ` · last edited by ${record.edited_by}`}
+          </p>
+        )}
+
+        {!editing && earlierPending.length > 0 && (
           <div className="warning-message">
             Earlier required steps are still pending: {earlierPending.map((s) => s.label).join(', ')}.
             You can still record this step.
           </div>
         )}
 
-        {step.substeps.length > 0 && (
-          <details className="substeps">
-            <summary>Procedure ({step.substeps.length} sub-steps)</summary>
-            <ol>
-              {step.substeps.map((s, i) => (
-                <li key={i}>
-                  <strong>{s.process}</strong>
-                  {['params', 'temp', 'time', 'tool', 'specs'].filter((k) => s[k]).map((k) => (
-                    <span key={k} className="muted"> · {s[k]}</span>
-                  ))}
-                  {s.comment && <div className="muted">{s.comment}</div>}
-                </li>
-              ))}
-            </ol>
-          </details>
-        )}
-
-        {step.parameters.length > 0 && (
+        {showParams && step.parameters.length > 0 && (
           <div className="param-grid">
             {step.parameters.map((p) => (
               <div className="form-group" key={p.key}>
@@ -129,6 +173,31 @@ const StepForm = ({ step, traveler, project, userInfo, earlierPending, onClose, 
           </div>
         )}
 
+        {showParams && substeps.length > 0 && (
+          <details className="substeps" open={editing}>
+            <summary>Procedure ({substeps.length} sub-steps, all editable)</summary>
+            <div className="substep-table-wrap">
+              <table className="substep-table">
+                <thead>
+                  <tr><th>Process</th>{SUBSTEP_FIELDS.map(([, label]) => <th key={label}>{label}</th>)}</tr>
+                </thead>
+                <tbody>
+                  {substeps.map((s, i) => (
+                    <tr key={i}>
+                      <td>{s.process}</td>
+                      {SUBSTEP_FIELDS.map(([field]) => (
+                        <td key={field}>
+                          <input value={s[field] || ''} onChange={(e) => setSubstepField(i, field, e.target.value)} />
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </details>
+        )}
+
         <div className="form-row">
           <div className="form-group">
             <label>Date</label>
@@ -136,21 +205,21 @@ const StepForm = ({ step, traveler, project, userInfo, earlierPending, onClose, 
           </div>
         </div>
 
-        <div className="form-group">
-          <label>{action ? 'Cut' : 'Applies to'}</label>
-          {selectable.length === 0 && (
-            <p className="muted">Nothing left to cut at this level.</p>
-          )}
-          <div className="target-list">
-            {selectable.map((u) => (
-              <label key={u.unique_id} className="confirm-checkbox">
-                <input type="checkbox" checked={targets.includes(u.unique_id)}
-                       onChange={() => toggleTarget(u.unique_id)} />
-                {u.sample_name} <span className="muted">({u.sample_type})</span>
-              </label>
-            ))}
+        {!editing && (
+          <div className="form-group">
+            <label>{action ? 'Cut' : 'Applies to'}</label>
+            {selectable.length === 0 && <p className="muted">Nothing left to cut at this level.</p>}
+            <div className="target-list">
+              {selectable.map((u) => (
+                <label key={u.unique_id} className="confirm-checkbox">
+                  <input type="checkbox" checked={targets.includes(u.unique_id)}
+                         onChange={() => toggleTarget(u.unique_id)} />
+                  {u.sample_name} <span className="muted">({u.sample_type})</span>
+                </label>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         {action && targets.map((parentId) => {
           const parent = units.find((u) => u.unique_id === parentId);
@@ -171,27 +240,61 @@ const StepForm = ({ step, traveler, project, userInfo, earlierPending, onClose, 
           );
         })}
 
+        {editing && record.created_children?.length > 0 && (
+          <p className="muted">
+            Created: {record.created_children.map((c) => c.sample_name).join(', ')}
+          </p>
+        )}
+
+        {step.allow_files && (
+          <div className="form-group">
+            <label>Files (optional, e.g. recipe file)</label>
+            {editing && attached === null && <p className="muted">Loading attached files...</p>}
+            {editing && attached?.length > 0 && (
+              <ul className="file-list">
+                {attached.map((f) => (
+                  <li key={f.mfid}>
+                    {f.url ? <a href={f.url} target="_blank" rel="noreferrer">{f.filename}</a> : f.filename}
+                  </li>
+                ))}
+              </ul>
+            )}
+            <input type="file" multiple className="file-input"
+                   onChange={(e) => setNewFiles(Array.from(e.target.files))} />
+          </div>
+        )}
+
         <div className="form-group">
           <label>Comments / deviations</label>
           <textarea rows="3" value={comments} onChange={(e) => setComments(e.target.value)} />
         </div>
 
         {error && <div className="error-message">{error}</div>}
-        {result && (
+        {problems && (
           <div className="warning-message">
-            Recorded with problems: {result.errors.join('; ')}
+            Saved, with problems: {problems.join('; ')}
             <div><button className="btn btn-secondary btn-small" onClick={onRecorded}>OK</button></div>
           </div>
         )}
 
         <div className="button-group">
-          <button className="btn btn-primary" onClick={() => submit('done')} disabled={loading || !targets.length}>
-            {loading ? 'Saving...' : 'Record as done'}
-          </button>
-          {step.optional && (
-            <button className="btn btn-secondary" onClick={() => submit('skipped')} disabled={loading || !targets.length}>
-              Skip step
+          {editing ? (
+            <button className="btn btn-primary" onClick={() => submit(record.status)} disabled={loading}>
+              {loading ? 'Saving...' : 'Save changes'}
             </button>
+          ) : (
+            <>
+              <button className="btn btn-primary" onClick={() => submit('done')}
+                      disabled={loading || !targets.length}>
+                {loading ? 'Saving...' : 'Record as done'}
+              </button>
+              {step.optional && (
+                <button className="btn btn-secondary" onClick={() => submit('skipped')}
+                        disabled={loading || !targets.length}>
+                  Skip step
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>

@@ -60,6 +60,22 @@ export const getTraveler = async (waferId) =>
 
 export const recordStep = async (body) => (await api.post('/fab/steps', body)).data;
 
+export const getStepRecord = async (datasetId) =>
+  (await api.get(`/fab/steps/${encodeURIComponent(datasetId)}`)).data;
+
+export const editStepRecord = async (datasetId, body) =>
+  (await api.put(`/fab/steps/${encodeURIComponent(datasetId)}`, body)).data;
+
+export const uploadStepFiles = async (datasetId, files) => {
+  const form = new FormData();
+  files.forEach((f) => form.append('files', f));
+  // Overrides the instance's JSON default (which would serialize the FormData);
+  // axios then drops it so the browser adds the multipart boundary.
+  return (await api.post(`/fab/steps/${encodeURIComponent(datasetId)}/files`, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })).data;
+};
+
 export const listPrinters = async () => (await api.get('/fab/printers')).data;
 
 export const printCrucibleLabel = async (printerId, sampleId) =>

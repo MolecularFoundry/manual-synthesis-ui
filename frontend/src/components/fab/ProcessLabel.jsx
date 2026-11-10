@@ -4,9 +4,9 @@ import QRCode from 'qrcode';
 // Mirrors the team's label_printer defaults (date, substrate, material, temp, power, rate, thickness).
 const DEFAULT_CHECKED = new Set([
   'wafer_name', 'date', 'substrate_material', 'base_metal',
-  'al_deposition.thickness_a', 'al_deposition.rate_a_s',
-  'nbn_deposition.thickness_nm', 'nbn_deposition.calibrated_rate_a_s',
-  'nbn_deposition.deposition_temp_c', 'nbn_deposition.target_output_pct',
+  'ebeam_evaporation.thickness_a', 'ebeam_evaporation.rate_a_s',
+  'sputtering.thickness_nm', 'sputtering.calibrated_rate_a_s',
+  'sputtering.deposition_temp_c', 'sputtering.target_output_pct',
 ]);
 
 const LABEL_STYLE =
@@ -23,7 +23,7 @@ const buildFields = (traveler) => {
     { id: 'wafer_name', label: 'Wafer', value: wafer.sample_name },
     { id: 'date', label: 'Date', value: specRecord?.step_date },
     { id: 'wafer_type', label: 'Wafer type', value: options.wafer_type },
-    { id: 'base_metal', label: 'Material', value: options.base_metal },
+    { id: 'base_metal', label: 'Material', value: spec.base_metal },
     { id: 'substrate_material', label: 'Substrate', value: spec.substrate_material },
     { id: 'substrate_spec', label: 'Substrate spec', value: spec.substrate_spec },
     { id: 'batch_number', label: 'Batch', value: spec.batch_number },
@@ -68,13 +68,24 @@ const ProcessLabel = ({ traveler, onClose }) => {
   const print = () => {
     // innerHTML of the React-rendered preview is already escaped.
     const win = window.open('', '_blank');
+    if (!win) {
+      setToast('The browser blocked the print window. Allow pop-ups for this site and try again.');
+      setTimeout(() => setToast(''), 5000);
+      return;
+    }
     win.document.write(`<html><head><title>${escapeHtml(traveler.wafer.sample_name)}</title><style>${LABEL_STYLE}</style></head><body>`);
     win.document.write(`<div id="label-print">${labelRef.current.innerHTML}</div></body></html>`);
     win.document.close();
-    win.onload = () => {
+    // The written document has usually finished loading by now, so a load
+    // handler would never fire; wait for the QR image instead, then print.
+    const pending = Array.from(win.document.images)
+      .filter((img) => !img.complete)
+      .map((img) => new Promise((resolve) => { img.onload = resolve; img.onerror = resolve; }));
+    Promise.all(pending).then(() => {
+      win.focus();
       win.print();
       win.close();
-    };
+    });
   };
 
   const capture = async () => {

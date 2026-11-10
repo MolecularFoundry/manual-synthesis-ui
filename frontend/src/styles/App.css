@@ -551,3 +551,11 @@ body {
 .children-names input { width: 17rem; }
 .label-notes-input { padding: 0.4rem; border: 1px solid #ddd; border-radius: 4px; }
 .modal-panel textarea { width: 100%; box-sizing: border-box; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; }
+.step-actions { display: flex; flex-wrap: wrap; gap: 0.3rem; justify-content: flex-end; }
+.substep-table-wrap { overflow-x: auto; }
+.substep-table { border-collapse: collapse; font-size: 0.85rem; width: 100%; }
+.substep-table th, .substep-table td { padding: 0.25rem; border-bottom: 1px solid #eee; text-align: left; }
+.substep-table td:first-child { white-space: nowrap; font-weight: 600; }
+.substep-table input { width: 100%; min-width: 6rem; padding: 0.3rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.85rem; box-sizing: border-box; }
+.file-list { margin: 0.25rem 0 0.5rem; padding-left: 1.2rem; }
+.form-group input.file-input { border: none; padding: 0.25rem 0; }

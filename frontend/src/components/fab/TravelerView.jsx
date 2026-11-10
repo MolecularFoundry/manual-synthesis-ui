@@ -10,6 +10,7 @@ const TravelerView = ({ waferId, project, userInfo, onBack }) => {
   const [traveler, setTraveler] = useState(null);
   const [error, setError] = useState('');
   const [activeStepId, setActiveStepId] = useState(null);
+  const [activeRecord, setActiveRecord] = useState(null);
   const [showProcessLabel, setShowProcessLabel] = useState(false);
 
   const load = useCallback(async () => {
@@ -98,8 +99,15 @@ const TravelerView = ({ waferId, project, userInfo, onBack }) => {
                     <td>{STATUS_LABEL[s.status]}</td>
                     <td>{last?.step_date || ''}</td>
                     <td className="applied-to">{applied.join(', ')}</td>
-                    <td>
-                      <button className="btn btn-secondary btn-small" onClick={() => setActiveStepId(s.id)}>
+                    <td className="step-actions">
+                      {s.records.map((r) => (
+                        <button key={r.dataset_id} className="btn btn-secondary btn-small"
+                                onClick={() => { setActiveRecord(r); setActiveStepId(s.id); }}>
+                          View / edit{s.records.length > 1 ? ` (${r.step_date || '?'})` : ''}
+                        </button>
+                      ))}
+                      <button className="btn btn-secondary btn-small"
+                              onClick={() => { setActiveRecord(null); setActiveStepId(s.id); }}>
                         {s.status === 'pending' ? 'Record' : 'Record again'}
                       </button>
                     </td>
@@ -113,17 +121,20 @@ const TravelerView = ({ waferId, project, userInfo, onBack }) => {
 
       {activeStep && (
         <StepForm
+          key={activeRecord?.dataset_id || `new-${activeStep.id}`}
           step={activeStep}
+          record={activeRecord}
           traveler={traveler}
           project={project}
           userInfo={userInfo}
           earlierPending={steps
             .slice(0, steps.indexOf(activeStep))
             .filter((s) => s.status === 'pending' && !s.optional)}
-          onClose={() => setActiveStepId(null)}
+          onClose={() => { setActiveStepId(null); setActiveRecord(null); }}
           onRecorded={async () => {
             await load();
             setActiveStepId(null);
+            setActiveRecord(null);
           }}
         />
       )}
