@@ -531,7 +531,7 @@ body {
 .crucible-label h4 { margin: 0; }
 
 .label-layout { display: grid; grid-template-columns: 1fr auto; gap: 1.5rem; }
-.label-fields { display: flex; flex-direction: column; gap: 0.15rem; max-height: 22rem; overflow-y: auto; }
+.label-fields { display: flex; flex-direction: column; gap: 0.15rem; max-height: 34rem; overflow-y: auto; }
 .label-preview {
   width: 6cm; font-size: 12px; font-family: 'Times New Roman', serif; padding: 5px;
   border: 2px solid black; background: white; overflow-wrap: break-word; overflow: hidden;
@@ -559,3 +559,11 @@ body {
 .substep-table input { width: 100%; min-width: 6rem; padding: 0.3rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.85rem; box-sizing: border-box; }
 .file-list { margin: 0.25rem 0 0.5rem; padding-left: 1.2rem; }
 .form-group input.file-input { border: none; padding: 0.25rem 0; }
+.label-preview .process { border-bottom: 1px dashed black; margin-bottom: 5px; padding-bottom: 5px; }
+.label-preview .process:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+.label-section-picker { margin-bottom: 0.4rem; }
+.label-fields .section-toggle { font-weight: 600; }
+.label-fields .field-toggle { margin-left: 1.4rem; font-size: 0.9rem; }
+.label-notes-input { display: block; }
+.label-note-field { display: block; margin-top: 0.4rem; width: 6cm; }
+.label-note-field .label-notes-input { margin-top: 0.15rem; }

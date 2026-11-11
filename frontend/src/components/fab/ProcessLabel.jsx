@@ -1,54 +1,83 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import QRCode from 'qrcode';
 
-// Mirrors the team's label_printer defaults (date, substrate, material, temp, power, rate, thickness).
-const DEFAULT_CHECKED = new Set([
-  'wafer_name', 'date', 'substrate_material', 'base_metal',
-  'ebeam_evaporation.thickness_a', 'ebeam_evaporation.rate_a_s',
-  'sputtering.thickness_nm', 'sputtering.calibrated_rate_a_s',
-  'sputtering.deposition_temp_c', 'sputtering.target_output_pct',
-]);
+// Follows the team's label_printer conventions: one section per process,
+// separated by a dashed line, each with its own notes; "Name, unit: value".
+const DEFAULT_SECTIONS = ['wafer', 'ebeam_evaporation', 'sputtering'];
+const DEFAULT_FIELDS = {
+  wafer: ['substrate_name', 'date', 'material_name'],
+  ebeam_evaporation: ['process', 'date', 'thickness_a', 'rate_a_s'],
+  sputtering: ['process', 'date', 'deposition_temp_c', 'target_output_pct', 'calibrated_rate_a_s', 'thickness_nm'],
+};
+const DEFAULT_STEP_FIELDS = ['process', 'date'];
 
 const LABEL_STYLE =
   'body{margin:0}#label-print{width:6cm;font-size:12px;font-family:Times New Roman,serif;padding:5px;' +
   'border:2px solid black;background:white;overflow-wrap:break-word;overflow:hidden}#label-print p{margin:0}' +
+  '.process{border-bottom:1px dashed black;margin-bottom:5px;padding-bottom:5px}' +
+  '.process:last-child{border-bottom:none;margin-bottom:0;padding-bottom:0}' +
   '.label-qr{float:right;width:1.6cm;height:1.6cm;margin-left:4px}.label-notes{white-space:pre-wrap}';
 
 const escapeHtml = (s) =>
   String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-const buildFields = (traveler) => {
+// Same vocabulary label_printer applies to its "Material name" column.
+const abbreviateMaterial = (name) => String(name)
+  .replace(/Titanium/g, 'Ti')
+  .replace(/Tungsten/g, 'W')
+  .replace(/Hafnium/g, 'Hf')
+  .replace(/Silicon/g, 'Si')
+  .replace(/Niobium/g, 'Nb')
+  .replace(/ Nitride/g, 'N')
+  .replace(/Gold/g, 'Au')
+  .replace(/Aluminum/g, 'Al');
+
+const present = (v) => v !== undefined && v !== null && v !== '';
+
+const buildSections = (traveler) => {
   const { wafer, wafer_options: options, spec, spec_record: specRecord, steps } = traveler;
-  const fields = [
-    { id: 'wafer_name', label: 'Wafer', value: wafer.sample_name },
-    { id: 'date', label: 'Date', value: specRecord?.step_date },
-    { id: 'wafer_type', label: 'Wafer type', value: options.wafer_type },
-    { id: 'base_metal', label: 'Material', value: spec.base_metal },
-    { id: 'substrate_material', label: 'Substrate', value: spec.substrate_material },
-    { id: 'substrate_spec', label: 'Substrate spec', value: spec.substrate_spec },
-    { id: 'batch_number', label: 'Batch', value: spec.batch_number },
-  ];
+  const sections = [{
+    id: 'wafer',
+    title: 'Wafer',
+    fields: [
+      { id: 'substrate_name', label: 'Substrate name', value: wafer.sample_name },
+      { id: 'date', label: 'Date', value: specRecord?.step_date },
+      { id: 'material_name', label: 'Material name', value: present(spec.base_metal) ? abbreviateMaterial(spec.base_metal) : null },
+      { id: 'substrate_material', label: 'Substrate material', value: spec.substrate_material },
+      { id: 'substrate_spec', label: 'Substrate specification', value: spec.substrate_spec },
+      { id: 'batch_number', label: 'Batch number', value: spec.batch_number },
+      { id: 'wafer_type', label: 'Wafer type', value: options.wafer_type },
+    ],
+  }];
   steps.forEach((step) => {
     const done = step.records.filter((r) => r.status === 'done');
     const last = done[done.length - 1];
     if (!last) return;
-    step.parameters.forEach((p) => {
-      const value = last.parameters?.[p.key];
-      if (value === null || value === undefined || value === '') return;
-      fields.push({
-        id: `${step.id}.${p.key}`,
-        label: `${step.label} ${p.label}`,
-        value: p.unit ? `${value} ${p.unit}` : value,
-      });
+    sections.push({
+      id: step.id,
+      title: `${step.label} ${step.name}`,
+      fields: [
+        { id: 'process', label: 'Process', value: `${step.label} ${step.name}` },
+        { id: 'date', label: 'Date', value: last.step_date },
+        ...step.parameters.map((p) => ({
+          id: p.key,
+          label: p.unit ? `${p.label}, ${p.unit}` : p.label,
+          value: last.parameters?.[p.key],
+        })),
+      ],
     });
   });
-  return fields.filter((f) => f.value !== undefined && f.value !== null && f.value !== '');
+  return sections.map((s) => ({ ...s, fields: s.fields.filter((f) => present(f.value)) }));
 };
 
 const ProcessLabel = ({ traveler, onClose }) => {
-  const fields = useMemo(() => buildFields(traveler), [traveler]);
-  const [checked, setChecked] = useState(() => new Set(fields.filter((f) => DEFAULT_CHECKED.has(f.id)).map((f) => f.id)));
-  const [notes, setNotes] = useState('');
+  const sections = useMemo(() => buildSections(traveler), [traveler]);
+  const [included, setIncluded] = useState(
+    () => new Set(sections.filter((s) => DEFAULT_SECTIONS.includes(s.id)).map((s) => s.id))
+  );
+  const [checked, setChecked] = useState(() => new Set(sections.flatMap((s) =>
+    (DEFAULT_FIELDS[s.id] || DEFAULT_STEP_FIELDS).map((f) => `${s.id}.${f}`))));
+  const [notes, setNotes] = useState({});
   const [showQr, setShowQr] = useState(true);
   const [qrSrc, setQrSrc] = useState('');
   const [toast, setToast] = useState('');
@@ -58,12 +87,22 @@ const ProcessLabel = ({ traveler, onClose }) => {
     QRCode.toDataURL(traveler.wafer.explorer_url, { margin: 0, width: 160 }).then(setQrSrc);
   }, [traveler.wafer.explorer_url]);
 
-  const toggle = (id) =>
-    setChecked((prev) => {
+  const toggleIn = (setter, id) =>
+    setter((prev) => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
+
+  // label_printer skips sections with nothing to show.
+  const shown = sections
+    .filter((s) => included.has(s.id))
+    .map((s) => ({
+      ...s,
+      lines: s.fields.filter((f) => checked.has(`${s.id}.${f.id}`)),
+      note: (notes[s.id] || '').trim(),
+    }))
+    .filter((s) => s.lines.length || s.note);
 
   // Print from a hidden iframe holding only the label: its load event fires
   // reliably (unlike a document.write'd pop-up, whose print() Chrome can defer
@@ -121,13 +160,22 @@ const ProcessLabel = ({ traveler, onClose }) => {
 
         <div className="label-layout">
           <div className="label-fields">
-            {fields.map((f) => (
-              <label key={f.id} className="confirm-checkbox">
-                <input type="checkbox" checked={checked.has(f.id)} onChange={() => toggle(f.id)} />
-                {f.label}
-              </label>
+            {sections.map((s) => (
+              <div key={s.id} className="label-section-picker">
+                <label className="confirm-checkbox section-toggle">
+                  <input type="checkbox" checked={included.has(s.id)} onChange={() => toggleIn(setIncluded, s.id)} />
+                  {s.title}
+                </label>
+                {included.has(s.id) && s.fields.map((f) => (
+                  <label key={f.id} className="confirm-checkbox field-toggle">
+                    <input type="checkbox" checked={checked.has(`${s.id}.${f.id}`)}
+                           onChange={() => toggleIn(setChecked, `${s.id}.${f.id}`)} />
+                    {f.label}
+                  </label>
+                ))}
+              </div>
             ))}
-            <label className="confirm-checkbox">
+            <label className="confirm-checkbox section-toggle">
               <input type="checkbox" checked={showQr} onChange={() => setShowQr(!showQr)} />
               Crucible QR code
             </label>
@@ -136,13 +184,21 @@ const ProcessLabel = ({ traveler, onClose }) => {
           <div>
             <div id="label-print" className="label-preview" ref={labelRef}>
               {showQr && qrSrc && <img className="label-qr" src={qrSrc} alt="Crucible QR" />}
-              {fields.filter((f) => checked.has(f.id)).map((f) => (
-                <p key={f.id}><b>{f.label}:</b> {f.value}</p>
+              {shown.map((s) => (
+                <div key={s.id} className="process">
+                  {s.lines.map((f) => <p key={f.id}><b>{f.label}:</b> {f.value}</p>)}
+                  {s.note && <div className="label-notes"><b>Note:</b> {s.note}</div>}
+                </div>
               ))}
-              {notes.trim() && <div className="label-notes"><b>Note:</b> {notes}</div>}
             </div>
-            <textarea className="label-notes-input" rows="3" placeholder="Add notes here..."
-                      value={notes} onChange={(e) => setNotes(e.target.value)} />
+            {sections.filter((s) => included.has(s.id)).map((s) => (
+              <label key={s.id} className="label-note-field">
+                <span className="muted">Notes: {s.title}</span>
+                <textarea className="label-notes-input" rows="2" placeholder="Add notes here..."
+                          value={notes[s.id] || ''}
+                          onChange={(e) => setNotes({ ...notes, [s.id]: e.target.value })} />
+              </label>
+            ))}
           </div>
         </div>
 
