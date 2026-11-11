@@ -62,7 +62,7 @@ check("chiplets are Step 14, post clean Step 21", labels["Step 14"]["id"] == "cu
       and labels["Step 21"]["id"] == "jj_post_clean" and "Step 13b" not in labels)
 check("file uploads on the requested steps",
       sorted(l for l, s in labels.items() if s.get("allow_files"))
-      == sorted(["Step 2", "Step 5", "Step 7", "Step 8A", "Step 8B", "Step 11", "Step 15", "Step 17"]))
+      == sorted(["Step 2", "Step 3A", "Step 3B", "Step 5", "Step 7", "Step 8A", "Step 8B", "Step 11", "Step 15", "Step 17"]))
 check("split times", {"strike_time_s", "etch_time_s"} <= set(fields(labels["Step 7"], "o2_descum"))
       and {"strike_time_s", "etch_time_s"} <= set(fields(labels["Step 15"], "o2_descum"))
       and {"etch1_time_s", "etch2_time_s"} <= set(fields(labels["Step 9"], "trench_etch")))

@@ -99,7 +99,7 @@ QCMF_QUBIT_V1_STEPS = [
         row("n2_blow_dry", "N2 blow dry", tool("Solvent bench")),
         blank("transfer_glove_box", "Transfer to glove box"),
     ]),
-    step("ebeam_evaporation", "Step 3A", "E-beam evaporation", tool_="E-beam evaporator", optional=True, rows=[
+    step("ebeam_evaporation", "Step 3A", "E-beam evaporation", tool_="E-beam evaporator", optional=True, allow_files=True, rows=[
         blank("load_wafer", "Load wafer into loadlock"),
         row("chamber", "Recipe and chambers", recipe(),
             num("ox_chamber_pressure_torr", "Ox chamber pressure", "Torr"),
@@ -110,7 +110,7 @@ QCMF_QUBIT_V1_STEPS = [
         row("deposit", "Deposit", num("thickness_a", "Thickness", "A", 1000)),
         blank("postcondition", "Postcondition"),
     ]),
-    step("sputtering", "Step 3B", "Sputtering", tool_="Sputter", optional=True, rows=[
+    step("sputtering", "Step 3B", "Sputtering", tool_="Sputter", optional=True, allow_files=True, rows=[
         blank("load_wafer", "Load wafer"),
         row("deposition", "Deposition", recipe(), text("target", "Target"),
             text("power_supply", "Power supply / target position"),
