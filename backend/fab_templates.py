@@ -70,7 +70,7 @@ def descum_rows(tool_name):
     ]
 
 
-def step(id_, label, name, rows, tool_=None, optional=False, condition=None, action=None, allow_files=False):
+def step(id_, label, name, rows, tool_=None, optional=False, condition=None, action=None, allow_files=True):
     return {"id": id_, "label": label, "name": name, "optional": optional, "condition": condition,
             "tool": tool_, "action": action, "allow_files": allow_files, "rows": rows}
 
@@ -90,7 +90,7 @@ QCMF_QUBIT_V1_STEPS = [
         sonicate("ipa", "IPA", 50, 5, 80, 100),
         blank("ipa_rinse_n2_dry", "IPA rinse and N2 dry"),
     ]),
-    step("native_oxide_removal", "Step 2", "Native oxide removal", tool_="HF Bench", allow_files=True, rows=[
+    step("native_oxide_removal", "Step 2", "Native oxide removal", tool_="HF Bench", rows=[
         row("boe_dip", "BOE dip", chem("10:1 mixture"), temp(20), minutes(1), tool("HF Bench")),
         row("diw_beaker_1", "DIW beaker 1", temp(20), minutes(1), tool("HF Bench")),
         row("diw_beaker_2", "DIW beaker 2", temp(20), minutes(1), tool("HF Bench")),
@@ -99,7 +99,7 @@ QCMF_QUBIT_V1_STEPS = [
         row("n2_blow_dry", "N2 blow dry", tool("Solvent bench")),
         blank("transfer_glove_box", "Transfer to glove box"),
     ]),
-    step("ebeam_evaporation", "Step 3A", "E-beam evaporation", tool_="E-beam evaporator", optional=True, allow_files=True, rows=[
+    step("ebeam_evaporation", "Step 3A", "E-beam evaporation", tool_="E-beam evaporator", optional=True, rows=[
         blank("load_wafer", "Load wafer into loadlock"),
         row("chamber", "Recipe and chambers", recipe(),
             num("ox_chamber_pressure_torr", "Ox chamber pressure", "Torr"),
@@ -110,7 +110,7 @@ QCMF_QUBIT_V1_STEPS = [
         row("deposit", "Deposit", num("thickness_a", "Thickness", "A", 1000)),
         blank("postcondition", "Postcondition"),
     ]),
-    step("sputtering", "Step 3B", "Sputtering", tool_="Sputter", optional=True, allow_files=True, rows=[
+    step("sputtering", "Step 3B", "Sputtering", tool_="Sputter", optional=True, rows=[
         blank("load_wafer", "Load wafer"),
         row("deposition", "Deposition", recipe(), text("target", "Target"),
             text("power_supply", "Power supply / target position"),
@@ -134,7 +134,7 @@ QCMF_QUBIT_V1_STEPS = [
         row("bake_2", "Bake", temp(100), minutes(3), tool("CEE hotplate"), program_name("100C_180s")),
         blank("clean_spinner", "Clean up spinner"),
     ]),
-    step("exposure", "Step 5", "Exposure", tool_="MLA", allow_files=True, rows=[
+    step("exposure", "Step 5", "Exposure", tool_="MLA", rows=[
         blank("calibrate_dose", "Calibrate dose"),
         row("expose", "Expose", tool("MLA"), num("dose_mj_cm2", "Dose", "mJ/cm2", 50),
             num("defocus", "Defocus", None, 4), comment("This can vary based on the dose test")),
@@ -145,16 +145,16 @@ QCMF_QUBIT_V1_STEPS = [
         blank("diw_rinse_n2_dry", "DIW rinse + N2 blow dry"),
         blank("microscope", "Microscope inspection"),
     ]),
-    step("o2_descum", "Step 7", "O2 descum", tool_="Oxford ICP chlorine", allow_files=True,
+    step("o2_descum", "Step 7", "O2 descum", tool_="Oxford ICP chlorine",
          rows=descum_rows("Oxford ICP chlorine")),
-    step("wet_etch", "Step 8A", "Wet etch", tool_="Acid bench", optional=True, allow_files=True, rows=[
+    step("wet_etch", "Step 8A", "Wet etch", tool_="Acid bench", optional=True, rows=[
         row("etchant", "Phosphoric acid / Al etchant", temp(20), minutes(7), tool("Acid bench"),
             specs("Aim 7 min etch time (6-8 min)"), comment("Etch rates vary based on thickness and sample size")),
         row("diw_1", "DIW 1", minutes(2), num("stirrer_rpm", "Magnetic stirrer", "rpm", 600)),
         row("diw_2", "DIW 2", comment("Use a second beaker of fresh DIW to wash out wafer")),
         blank("diw_rinse_n2_dry", "DIW rinse + N2 dry"),
     ]),
-    step("dry_etch", "Step 8B", "Dry etch", tool_="Oxford ICP fluorine", optional=True, allow_files=True, rows=[
+    step("dry_etch", "Step 8B", "Dry etch", tool_="Oxford ICP fluorine", optional=True, rows=[
         row("dry_etch", "Dry etch", recipe("MS_NbN etch"), tool("Oxford ICP fluorine"),
             num("forward_power_w", "Forward power", "W"),
             num("icp_power_w", "ICP power", "W"),
@@ -195,7 +195,7 @@ QCMF_QUBIT_V1_STEPS = [
         sonicate("ipa_1", "IPA 1", 50, 5, 80, 50),
         blank("ipa_rinse_n2_dry", "IPA rinse and N2 blow dry"),
     ]),
-    step("jj_resist_spin", "Step 11", "JJ e-beam resist spin", tool_="E-beam spinner / Oven", allow_files=True, rows=[
+    step("jj_resist_spin", "Step 11", "JJ e-beam resist spin", tool_="E-beam spinner / Oven", rows=[
         row("dehydration_bake", "Dehydration bake", temp(100), minutes(3), tool("CEE hotplate"), program_name("100C_180s")),
         row("cooldown_1", "Wafer cooldown", minutes(1), comment("After placing in spinner")),
         row("spincoat_mma", "Spincoat MMA", resist("MMA"), rpm(4000), seconds(45), tool("ebeam spinner"), program(14)),
@@ -222,7 +222,7 @@ QCMF_QUBIT_V1_STEPS = [
     step("cut_chiplets", "Step 14", "Cut into chiplets", tool_="Dicing saw", optional=True, action="create_chiplets", rows=[
         row("cut", "Cut wafer into chiplets", tool("Dicing saw"), comment()),
     ]),
-    step("jj_o2_descum", "Step 15", "JJ O2 descum", tool_="Oxford ICP chlorine", allow_files=True,
+    step("jj_o2_descum", "Step 15", "JJ O2 descum", tool_="Oxford ICP chlorine",
          rows=descum_rows("Oxford ICP chlorine")),
     step("jj_native_oxide_removal", "Step 16", "JJ native oxide removal", tool_="HF Bench", optional=True, rows=[
         row("pad_etch", "Al PAD etch 639", temp(20), seconds(10), tool("HF Bench")),
@@ -232,7 +232,7 @@ QCMF_QUBIT_V1_STEPS = [
         row("n2_blow_dry", "N2 blow dry", tool("HF Bench")),
         blank("transfer_glove_box", "Transfer to glove box"),
     ]),
-    step("jj_deposition", "Step 17", "JJ deposition (pDolan)", tool_="Plassys", allow_files=True, rows=[
+    step("jj_deposition", "Step 17", "JJ deposition (pDolan)", tool_="Plassys", rows=[
         row("load_wafer", "Load wafer into loadlock", comment("With right orientation")),
         row("sequence", "Sequence", text("sequence_name", "Sequence name")),
         row("ar_milling", "Ar milling", num("voltage_v", "Acc. voltage", "V", 250),

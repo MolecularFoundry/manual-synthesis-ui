@@ -60,9 +60,7 @@ check("renamed deposition steps", labels["Step 3A"]["name"] == "E-beam evaporati
       and labels["Step 3B"]["name"] == "Sputtering")
 check("chiplets are Step 14, post clean Step 21", labels["Step 14"]["id"] == "cut_chiplets"
       and labels["Step 21"]["id"] == "jj_post_clean" and "Step 13b" not in labels)
-check("file uploads on the requested steps",
-      sorted(l for l, s in labels.items() if s.get("allow_files"))
-      == sorted(["Step 2", "Step 3A", "Step 3B", "Step 5", "Step 7", "Step 8A", "Step 8B", "Step 11", "Step 15", "Step 17"]))
+check("file uploads on every step", all(st.get("allow_files") for st in labels.values()))
 check("split times", {"strike_time_s", "etch_time_s"} <= set(fields(labels["Step 7"], "o2_descum"))
       and {"strike_time_s", "etch_time_s"} <= set(fields(labels["Step 15"], "o2_descum"))
       and {"etch1_time_s", "etch2_time_s"} <= set(fields(labels["Step 9"], "trench_etch")))
@@ -122,7 +120,7 @@ r = api.post(f"/api/fab/steps/{step2_id}/files", files=[("files", ("boe_recipe.t
 check("duplicate filename reported", r.status_code == 200 and not r.json()["success"])
 check("files listed with links", api.get(f"/api/fab/steps/{step2_id}").json()["files"][0]["url"].endswith("boe_recipe.txt"))
 r = api.post(f"/api/fab/steps/{ds_id}/files", files=[("files", ("x.txt", b"x", "text/plain"))])
-check("files refused on steps without uploads", r.status_code == 400)
+check("files accepted on Step 1A too", r.status_code == 200 and r.json()["uploaded"] == ["x.txt"])
 
 # Chiplets, dicing, multi-target steps
 r = step(wid, "cut_chiplets", [wid], new_children={wid: ["WFR99_CL01", "WFR99_CL02"]})
