@@ -4,6 +4,8 @@ import TravelerView from './TravelerView';
 
 const errorText = (err, fallback) => err.response?.data?.detail || fallback;
 const today = () => new Date().toISOString().split('T')[0];
+// 'wafer_type' -> 'Wafer type'
+const humanize = (key) => key.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
 
 const FabTraveler = ({ userInfo }) => {
   const [templates, setTemplates] = useState({});
@@ -43,7 +45,8 @@ const FabTraveler = ({ userInfo }) => {
       Object.entries(template.wafer_options).map(([k, values]) => [k, values[0]])
     );
     const spec = Object.fromEntries(template.wafer_spec.parameters.map((p) => [p.key, p.default ?? '']));
-    setForm({ templateId, name: '', description: '', options, spec, date: today() });
+    const templateDefault = Object.keys(template.template_defaults)[0];
+    setForm({ templateId, templateDefault, name: '', description: '', options, spec, date: today() });
     setShowNew(true);
     setError('');
   };
@@ -61,6 +64,7 @@ const FabTraveler = ({ userInfo }) => {
         wafer_name: form.name,
         description: form.description,
         wafer_options: form.options,
+        template_default: form.templateDefault,
         spec: form.spec,
         step_date: form.date,
       });
@@ -152,6 +156,19 @@ const FabTraveler = ({ userInfo }) => {
                 </select>
               </div>
               <div className="form-group">
+                <label>Template default</label>
+                <select
+                  value={form.templateDefault}
+                  onChange={(e) => setForm({ ...form, templateDefault: e.target.value })}
+                >
+                  {Object.entries(template.template_defaults).map(([id, d]) => (
+                    <option key={id} value={id}>{d.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="form-row">
+              <div className="form-group">
                 <label>Wafer name *</label>
                 <input
                   value={form.name}
@@ -169,7 +186,7 @@ const FabTraveler = ({ userInfo }) => {
             <div className="form-row">
               {Object.entries(template.wafer_options).map(([key, values]) => (
                 <div className="form-group" key={key}>
-                  <label>{key.replace('_', ' ')}</label>
+                  <label>{humanize(key)}</label>
                   <select
                     value={form.options[key]}
                     onChange={(e) => setForm({ ...form, options: { ...form.options, [key]: e.target.value } })}

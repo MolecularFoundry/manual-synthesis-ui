@@ -97,6 +97,7 @@ class WaferCreateRequest(BaseModel):
     wafer_name: str
     description: str = ""
     wafer_options: Dict[str, str]
+    template_default: str = "standard"
     spec: Dict[str, Any] = {}
     step_date: Optional[str] = None
 
@@ -112,6 +113,8 @@ class StepRecordRequest(BaseModel):
     step_date: str
     # {row_key: {field_key: value}} for the step's sub-step rows.
     rows: Dict[str, Dict[str, Any]] = {}
+    # Which template default the form started from (for the record).
+    template_default: Optional[str] = None
     comments: Optional[str] = None
     # For create_chiplets / create_chips steps: parent unique_id -> new child names.
     new_children: Dict[str, List[str]] = {}

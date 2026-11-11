@@ -58,7 +58,8 @@ const TravelerView = ({ waferId, project, userInfo, onBack }) => {
         <button className="btn btn-secondary" onClick={onBack}>&larr; Wafers</button>
         <h2>{wafer.sample_name}</h2>
         <span className="muted">
-          {traveler.template_name} · {Object.values(options).join(' · ')}
+          {traveler.template_name} · {traveler.template_defaults?.[traveler.template_default]?.name || traveler.template_default}
+          {' · '}{Object.values(options).join(' · ')}
         </span>
       </div>
 

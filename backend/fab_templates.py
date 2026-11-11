@@ -284,6 +284,14 @@ WAFER_SPEC_STEP = {
     ],
 }
 
+# "Template defaults": named sets of default values within one process
+# template (e.g. per base metal, device type, person or project). Each lists
+# only what it changes relative to the template's own defaults:
+#     "overrides": {step_id: {row_key: {field_key: value}}}
+QCMF_QUBIT_V1_DEFAULTS = {
+    "standard": {"name": "Standard (WFR_04)", "overrides": {}},
+}
+
 FAB_TEMPLATES = {
     "QCMF_Qubit_v1": {
         "name": "QCMF qubit wafer",
@@ -294,8 +302,29 @@ FAB_TEMPLATES = {
         },
         "wafer_spec": WAFER_SPEC_STEP,
         "steps": QCMF_QUBIT_V1_STEPS,
+        "template_defaults": QCMF_QUBIT_V1_DEFAULTS,
     },
 }
+
+DEFAULT_TEMPLATE_DEFAULT = "standard"
+
+
+def check_template_defaults(template_id):
+    """Fail at import if a template default names a step, row or field that doesn't exist."""
+    template = FAB_TEMPLATES[template_id]
+    steps = {s["id"]: s for s in template["steps"]}
+    for default_id, default in template["template_defaults"].items():
+        for step_id, rows in default["overrides"].items():
+            if step_id not in steps:
+                raise ValueError(f"{template_id}/{default_id}: unknown step '{step_id}'")
+            step_rows = {r["key"]: r for r in steps[step_id]["rows"]}
+            for row_key, fields in rows.items():
+                if row_key not in step_rows:
+                    raise ValueError(f"{template_id}/{default_id}: unknown row '{step_id}.{row_key}'")
+                field_keys = {f["key"] for f in step_rows[row_key]["fields"]}
+                for field_key in fields:
+                    if field_key not in field_keys:
+                        raise ValueError(f"{template_id}/{default_id}: unknown field '{step_id}.{row_key}.{field_key}'")
 
 
 def get_step(template_id, step_id):
@@ -308,3 +337,7 @@ def get_step(template_id, step_id):
 def step_applies(step, wafer_options):
     condition = step.get("condition") or {}
     return all(wafer_options.get(k) == v for k, v in condition.items())
+
+
+for _template_id in FAB_TEMPLATES:
+    check_template_defaults(_template_id)

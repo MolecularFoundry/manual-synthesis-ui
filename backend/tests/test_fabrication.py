@@ -35,7 +35,7 @@ def fields(step_def, row_key):
 def step(wafer_id, step_id, targets, status="done", rows=None, new_children=None):
     body = {**base, "template_id": T, "step_id": step_id, "wafer_id": wafer_id, "target_ids": targets,
             "status": status, "step_date": "2026-11-10", "rows": rows or {}, "comments": "c",
-            "new_children": new_children or {}}
+            "new_children": new_children or {}, "template_default": "standard"}
     return api.post("/api/fab/steps", json=body)
 
 
@@ -75,11 +75,30 @@ check("comment on a row that had none", step(wid, "jj_development", [wid],
 check("RT became 20 C", fields(labels["Step 2"], "boe_dip")["temp_c"]["default"] == 20)
 check("base metal stored as spec", trav["spec"]["base_metal"] == "Al")
 
+check("template default stored and served", trav["template_default"] == "standard"
+      and "standard" in trav["template_defaults"])
+check("unknown template default on wafer -> 400", api.post("/api/fab/wafers", json={
+    **base, "template_id": T, "wafer_name": "QCMF_WFR_X", "wafer_options": {"wafer_type": "qubit"},
+    "template_default": "nope"}).status_code == 400)
+body = {**base, "template_id": T, "step_id": "exposure", "wafer_id": wid, "target_ids": [wid], "status": "done",
+        "step_date": "2026-11-11", "rows": {}, "template_default": "nope"}
+check("unknown template default on step -> 400", api.post("/api/fab/steps", json=body).status_code == 400)
+
+import fab_templates  # noqa: E402
+fab_templates.QCMF_QUBIT_V1_DEFAULTS["typo"] = {"name": "Typo", "overrides": {"rca_clean": {"rca_1_clean": {"temperature": 1}}}}
+try:
+    fab_templates.check_template_defaults(T)
+    check("bad override caught at import", False)
+except ValueError as err:
+    check("bad override caught at import", "rca_clean.rca_1_clean.temperature" in str(err))
+del fab_templates.QCMF_QUBIT_V1_DEFAULTS["typo"]
+
 r = step(wid, "rca_clean", [wid], rows={"rca_1_clean": {"temp_c": "90", "time_min": 20, "tool": "Hotplate"},
                                        "diw_rinse": {"temp_c": 20, "time_s": "20"}})
 check("record step 1A", r.status_code == 200 and r.json()["success"])
 ds_id = r.json()["dataset_id"]
 meta = store["datasets"][ds_id]["scientific_metadata"]
+check("template default recorded on the step", meta["template_default"] == "standard")
 check("rows stored in template order", [r["key"] for r in meta["rows"]]
       == ["rca_1_clean", "diw_beaker_1", "diw_beaker_2", "diw_rinse", "n2_blow_dry"])
 check("flat searchable values, numbers parsed", meta["values"] == {

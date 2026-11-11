@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException, UploadFile, File
 from crucible.models import Dataset
 from crucible.utils import get_tz_isoformat
 
-from fab_templates import FAB_TEMPLATES, get_step, step_applies
+from fab_templates import FAB_TEMPLATES, DEFAULT_TEMPLATE_DEFAULT, get_step, step_applies
 from models import WaferCreateRequest, StepRecordRequest, StepEditRequest, PrintLabelRequest
 from routes.synthesis import client, add_sample, get_graph_explorer_url
 
@@ -33,6 +33,12 @@ def get_template(template_id):
     if not template:
         raise HTTPException(status_code=400, detail=f"Unknown template: {template_id}")
     return template
+
+
+def check_template_default(template, default_id):
+    if default_id not in template["template_defaults"]:
+        raise HTTPException(status_code=400, detail=f"Unknown template default: {default_id}")
+    return default_id
 
 
 def clean_value(field, value, where):
@@ -136,6 +142,7 @@ def collect_records(units, template_id):
                     "edited_by": meta.get("edited_by"),
                     "edited_at": meta.get("edited_at"),
                     "wafer_options": meta.get("wafer_options"),
+                    "template_default": meta.get("template_default"),
                     "unit_ids": [],
                 })
                 rec["unit_ids"].append(unit_id)
@@ -232,6 +239,7 @@ async def create_wafer(req: WaferCreateRequest):
     if name_taken(name, req.project):
         raise HTTPException(status_code=409, detail=f"A sample named '{name}' already exists in {req.project}")
 
+    template_default = check_template_default(template, req.template_default)
     spec_step = template["wafer_spec"]
     spec = clean_parameters(spec_step, req.spec)
     wafer_options = {k: req.wafer_options[k] for k in template["wafer_options"]}
@@ -241,7 +249,7 @@ async def create_wafer(req: WaferCreateRequest):
     wafer = {"unique_id": new_wafer["unique_id"], "sample_name": name}
     step_date = req.step_date or get_tz_isoformat()[:10]
     metadata = step_metadata(req.template_id, spec_step, wafer, "done", step_date, req.operator, None,
-                             parameters=spec, wafer_options=wafer_options)
+                             parameters=spec, wafer_options=wafer_options, template_default=template_default)
     dataset_id, link_errors = create_step_dataset(req.project, req.orcid, req.template_id, spec_step,
                                                   wafer, metadata, [wafer["unique_id"]])
     return {"wafer": {**wafer, "explorer_url": explorer_url(req.project, wafer["unique_id"])},
@@ -273,6 +281,8 @@ async def get_traveler(wafer_id: str):
         "template_id": template_id,
         "template_name": template["name"],
         "label_after_step": template.get("label_after_step"),
+        "template_defaults": template["template_defaults"],
+        "template_default": (spec_record or {}).get("template_default") or DEFAULT_TEMPLATE_DEFAULT,
         "wafer": units[0],
         "wafer_options": wafer_options,
         "spec": (spec_record or {}).get("parameters") or {},
@@ -284,7 +294,9 @@ async def get_traveler(wafer_id: str):
 
 @router.post("/steps")
 async def record_step(req: StepRecordRequest):
-    get_template(req.template_id)
+    template = get_template(req.template_id)
+    if req.template_default is not None:
+        check_template_default(template, req.template_default)
     step = get_step(req.template_id, req.step_id)
     if not step or step["id"] == "wafer_spec":
         raise HTTPException(status_code=400, detail=f"Unknown step: {req.step_id}")
@@ -353,7 +365,8 @@ async def record_step(req: StepRecordRequest):
         target_ids = list(dict.fromkeys(p for p, _ in planned))
 
     metadata = step_metadata(req.template_id, step, wafer, req.status, req.step_date, req.operator,
-                             req.comments, rows=rows, values=values, created_children=created or None)
+                             req.comments, rows=rows, values=values, created_children=created or None,
+                             template_default=req.template_default)
     dataset_id, link_errors = create_step_dataset(req.project, req.orcid, req.template_id, step,
                                                   wafer, metadata, target_ids)
     errors.extend(link_errors)

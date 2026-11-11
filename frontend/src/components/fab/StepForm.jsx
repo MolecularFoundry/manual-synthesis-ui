@@ -22,14 +22,34 @@ const StepForm = ({ step, record, traveler, project, userInfo, earlierPending = 
     : [];
   const showRows = !editing || record.status === 'done';
 
-  // values[rowKey][fieldKey]; an edit starts from the saved row, falling back to template defaults.
-  const [values, setValues] = useState(() => {
-    const saved = Object.fromEntries((editing ? record.rows || [] : []).map((r) => [r.key, r.values || {}]));
+  const templateDefaults = traveler.template_defaults || {};
+  const [templateDefault, setTemplateDefault] = useState(
+    (editing ? record.template_default : null) || traveler.template_default
+  );
+
+  // A template default only lists the values it changes; everything else comes from the template.
+  const defaultsFor = (defaultId) => {
+    const overrides = templateDefaults[defaultId]?.overrides?.[step.id] || {};
     return Object.fromEntries(step.rows.map((r) => [r.key, Object.fromEntries(r.fields.map((f) => {
-      const value = r.key in saved ? saved[r.key][f.key] : f.default;
+      const value = overrides[r.key] && f.key in overrides[r.key] ? overrides[r.key][f.key] : f.default;
       return [f.key, value ?? ''];
     }))]));
+  };
+
+  // values[rowKey][fieldKey]; an edit starts from the saved row, falling back to the defaults.
+  const [values, setValues] = useState(() => {
+    const defaults = defaultsFor(templateDefault);
+    if (!editing) return defaults;
+    const saved = Object.fromEntries((record.rows || []).map((r) => [r.key, r.values || {}]));
+    return Object.fromEntries(step.rows.map((r) => [r.key, r.key in saved
+      ? Object.fromEntries(r.fields.map((f) => [f.key, saved[r.key][f.key] ?? '']))
+      : defaults[r.key]]));
   });
+
+  const changeTemplateDefault = (defaultId) => {
+    setTemplateDefault(defaultId);
+    setValues(defaultsFor(defaultId));
+  };
   const [date, setDate] = useState(editing ? record.step_date || today() : today());
   const [comments, setComments] = useState(editing ? record.comments || '' : '');
   const [targets, setTargets] = useState(
@@ -110,6 +130,7 @@ const StepForm = ({ step, record, traveler, project, userInfo, earlierPending = 
           status,
           step_date: date,
           rows: status === 'done' ? values : {},
+          template_default: templateDefault,
           comments,
           new_children: action && status === 'done'
             ? Object.fromEntries(targets.map((t) => [t, children[t] || []]))
@@ -142,6 +163,21 @@ const StepForm = ({ step, record, traveler, project, userInfo, earlierPending = 
           <button className="btn btn-secondary btn-small" onClick={onClose} disabled={loading}>Close</button>
         </div>
         {step.tool && <p className="muted">Tool: {step.tool}</p>}
+
+        {!editing && showRows && (
+          <div className="form-row">
+            <div className="form-group">
+              <label>Template default</label>
+              <select value={templateDefault} onChange={(e) => changeTemplateDefault(e.target.value)}>
+                {Object.entries(templateDefaults).map(([id, d]) => (
+                  <option key={id} value={id}>
+                    {d.name}{id === traveler.template_default ? ' (this wafer)' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
 
         {editing && (
           <p className="muted">
