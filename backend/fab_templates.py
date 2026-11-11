@@ -13,7 +13,11 @@ def text(key, label, default=None):
 
 
 def row(key, process, *fields):
-    return {"key": key, "process": process, "fields": list(fields)}
+    """Every sub-step can take a comment; rows from the sheet that had one keep its text as the default."""
+    fields = list(fields)
+    if not any(f["key"] == "comment" for f in fields):
+        fields.append(text("comment", "Comment"))
+    return {"key": key, "process": process, "fields": fields}
 
 
 # Field shorthands

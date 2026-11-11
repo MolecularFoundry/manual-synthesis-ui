@@ -3,7 +3,7 @@ import { recordStep, editStepRecord, getStepRecord, uploadStepFiles } from '../.
 
 const ALLOWED_PARENTS = { create_chiplets: ['wafer'], create_chips: ['wafer', 'chiplet'] };
 const CHILD_SUFFIX = { create_chiplets: 'CL', create_chips: 'C' };
-const WIDE_FIELDS = new Set(['comment', 'specs']);
+const WIDE_FIELDS = new Set(['specs']);
 const today = () => new Date().toISOString().split('T')[0];
 
 const childNames = (parentName, suffix, count) =>
@@ -62,6 +62,14 @@ const StepForm = ({ step, record, traveler, project, userInfo, earlierPending = 
 
   const setChildName = (parentId, idx, name) =>
     setChildren((prev) => ({ ...prev, [parentId]: prev[parentId].map((n, i) => (i === idx ? name : n)) }));
+
+  const [openComments, setOpenComments] = useState(() => new Set());
+  const toggleComment = (rowKey) =>
+    setOpenComments((prev) => {
+      const next = new Set(prev);
+      next.has(rowKey) ? next.delete(rowKey) : next.add(rowKey);
+      return next;
+    });
 
   const setValue = (rowKey, fieldKey, value) =>
     setValues((prev) => ({ ...prev, [rowKey]: { ...prev[rowKey], [fieldKey]: value } }));
@@ -152,12 +160,17 @@ const StepForm = ({ step, record, traveler, project, userInfo, earlierPending = 
 
         {showRows && (
           <div className="step-rows">
-            {step.rows.map((r) => (
+            {step.rows.map((r) => {
+              const fields = r.fields.filter((f) => f.key !== 'comment');
+              const hasComment = r.fields.some((f) => f.key === 'comment');
+              const commentText = String(values[r.key].comment ?? '');
+              const open = openComments.has(r.key);
+              return (
               <div key={r.key} className="step-row">
                 <div className="step-row-title">{r.process}</div>
-                {r.fields.length > 0 && (
+                {fields.length > 0 && (
                   <div className="param-grid">
-                    {r.fields.map((f) => (
+                    {fields.map((f) => (
                       <div className={`form-group ${WIDE_FIELDS.has(f.key) ? 'wide' : ''}`} key={f.key}>
                         <label>{f.label}{f.unit ? ` (${f.unit})` : ''}</label>
                         <input
@@ -170,8 +183,23 @@ const StepForm = ({ step, record, traveler, project, userInfo, earlierPending = 
                     ))}
                   </div>
                 )}
+                {hasComment && (
+                  <div className="row-comment">
+                    <button type="button" className="comment-toggle" aria-expanded={open}
+                            onClick={() => toggleComment(r.key)}>
+                      {open ? '▾' : '▸'} {commentText.trim()
+                        ? (open ? 'Comment' : `Comment: ${commentText.length > 70 ? `${commentText.slice(0, 70)}…` : commentText}`)
+                        : 'Add comment'}
+                    </button>
+                    {open && (
+                      <textarea rows="2" value={commentText} autoFocus={!commentText}
+                                onChange={(e) => setValue(r.key, 'comment', e.target.value)} />
+                    )}
+                  </div>
+                )}
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
 

@@ -67,6 +67,11 @@ check("split times", {"strike_time_s", "etch_time_s"} <= set(fields(labels["Step
 check("liftoff NMP time in minutes", fields(labels["Step 20"], "nmp_1_hotplate")["time_min"]["default"] == 120)
 check("rows carry their own units", fields(labels["Step 1A"], "diw_rinse")["time_s"]["unit"] == "s"
       and fields(labels["Step 1A"], "rca_1_clean")["time_min"]["unit"] == "min")
+check("every sub-step has a comment field", all(
+    any(f["key"] == "comment" for f in r["fields"]) for st in labels.values() for r in st["rows"]))
+check("sheet comment kept as default", fields(labels["Step 1A"], "rca_1_clean")["comment"]["default"].startswith("20ml"))
+check("comment on a row that had none", step(wid, "jj_development", [wid],
+      rows={"ipa": {"comment": "used fresh IPA"}}).status_code == 200)
 check("RT became 20 C", fields(labels["Step 2"], "boe_dip")["temp_c"]["default"] == 20)
 check("base metal stored as spec", trav["spec"]["base_metal"] == "Al")
 

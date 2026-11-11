@@ -577,3 +577,10 @@ body {
 .step-row .param-grid .form-group { flex: 0 0 auto; width: max-content; min-width: 200px; max-width: 100%; }
 .step-row .param-grid .form-group label { white-space: nowrap; }
 .step-row .param-grid .form-group.wide { flex-basis: 100%; width: 100%; }
+.row-comment { margin: 0 0 0.35rem; }
+.comment-toggle {
+  background: none; border: none; padding: 0.15rem 0; cursor: pointer; color: #5f6368;
+  font-size: 0.85rem; text-align: left; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.comment-toggle:hover { color: #1a73e8; }
+.row-comment textarea { display: block; margin-top: 0.25rem; }
