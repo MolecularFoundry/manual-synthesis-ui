@@ -3,10 +3,7 @@ import { recordStep, editStepRecord, getStepRecord, uploadStepFiles } from '../.
 
 const ALLOWED_PARENTS = { create_chiplets: ['wafer'], create_chips: ['wafer', 'chiplet'] };
 const CHILD_SUFFIX = { create_chiplets: 'CL', create_chips: 'C' };
-const SUBSTEP_FIELDS = [
-  ['params', 'Parameters'], ['temp', 'Temp'], ['time', 'Time'],
-  ['tool', 'Tool'], ['specs', 'Tool specs'], ['comment', 'Comment'],
-];
+const WIDE_FIELDS = new Set(['comment', 'specs']);
 const today = () => new Date().toISOString().split('T')[0];
 
 const childNames = (parentName, suffix, count) =>
@@ -23,17 +20,15 @@ const StepForm = ({ step, record, traveler, project, userInfo, earlierPending = 
   const parentCandidates = action
     ? leafUnits.filter((u) => ALLOWED_PARENTS[action].includes(u.sample_type))
     : [];
-  const showParams = !editing || record.status === 'done';
+  const showRows = !editing || record.status === 'done';
 
-  const [params, setParams] = useState(() =>
-    Object.fromEntries(step.parameters.map((p) => {
-      const value = editing ? record.parameters?.[p.key] : p.default;
-      return [p.key, value ?? ''];
-    }))
-  );
-  const [substeps, setSubsteps] = useState(() => {
-    const saved = editing && record.substeps?.length === step.substeps.length ? record.substeps : step.substeps;
-    return saved.map((s) => ({ ...s }));
+  // values[rowKey][fieldKey]; an edit starts from the saved row, falling back to template defaults.
+  const [values, setValues] = useState(() => {
+    const saved = Object.fromEntries((editing ? record.rows || [] : []).map((r) => [r.key, r.values || {}]));
+    return Object.fromEntries(step.rows.map((r) => [r.key, Object.fromEntries(r.fields.map((f) => {
+      const value = r.key in saved ? saved[r.key][f.key] : f.default;
+      return [f.key, value ?? ''];
+    }))]));
   });
   const [date, setDate] = useState(editing ? record.step_date || today() : today());
   const [comments, setComments] = useState(editing ? record.comments || '' : '');
@@ -68,8 +63,8 @@ const StepForm = ({ step, record, traveler, project, userInfo, earlierPending = 
   const setChildName = (parentId, idx, name) =>
     setChildren((prev) => ({ ...prev, [parentId]: prev[parentId].map((n, i) => (i === idx ? name : n)) }));
 
-  const setSubstepField = (idx, field, value) =>
-    setSubsteps((prev) => prev.map((s, i) => (i === idx ? { ...s, [field]: value } : s)));
+  const setValue = (rowKey, fieldKey, value) =>
+    setValues((prev) => ({ ...prev, [rowKey]: { ...prev[rowKey], [fieldKey]: value } }));
 
   const uploadFiles = async (datasetId) => {
     if (!newFiles.length) return [];
@@ -91,8 +86,7 @@ const StepForm = ({ step, record, traveler, project, userInfo, earlierPending = 
           orcid: userInfo.orcid,
           operator: userInfo.name,
           step_date: date,
-          parameters: showParams ? params : {},
-          substeps,
+          rows: showRows ? values : {},
           comments,
         });
         datasetId = record.dataset_id;
@@ -107,8 +101,7 @@ const StepForm = ({ step, record, traveler, project, userInfo, earlierPending = 
           target_ids: targets,
           status,
           step_date: date,
-          parameters: status === 'done' ? params : {},
-          substeps,
+          rows: status === 'done' ? values : {},
           comments,
           new_children: action && status === 'done'
             ? Object.fromEntries(targets.map((t) => [t, children[t] || []]))
@@ -157,45 +150,29 @@ const StepForm = ({ step, record, traveler, project, userInfo, earlierPending = 
           </div>
         )}
 
-        {showParams && step.parameters.length > 0 && (
-          <div className="param-grid">
-            {step.parameters.map((p) => (
-              <div className="form-group" key={p.key}>
-                <label>{p.label}{p.unit ? ` (${p.unit})` : ''}</label>
-                <input
-                  type={p.type === 'number' ? 'number' : 'text'}
-                  step="any"
-                  value={params[p.key]}
-                  onChange={(e) => setParams({ ...params, [p.key]: e.target.value })}
-                />
+        {showRows && (
+          <div className="step-rows">
+            {step.rows.map((r) => (
+              <div key={r.key} className="step-row">
+                <div className="step-row-title">{r.process}</div>
+                {r.fields.length > 0 && (
+                  <div className="param-grid">
+                    {r.fields.map((f) => (
+                      <div className={`form-group ${WIDE_FIELDS.has(f.key) ? 'wide' : ''}`} key={f.key}>
+                        <label>{f.label}{f.unit ? ` (${f.unit})` : ''}</label>
+                        <input
+                          type={f.type === 'number' ? 'number' : 'text'}
+                          step="any"
+                          value={values[r.key][f.key]}
+                          onChange={(e) => setValue(r.key, f.key, e.target.value)}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>
-        )}
-
-        {showParams && substeps.length > 0 && (
-          <details className="substeps" open={editing}>
-            <summary>Procedure ({substeps.length} sub-steps, all editable)</summary>
-            <div className="substep-table-wrap">
-              <table className="substep-table">
-                <thead>
-                  <tr><th>Process</th>{SUBSTEP_FIELDS.map(([, label]) => <th key={label}>{label}</th>)}</tr>
-                </thead>
-                <tbody>
-                  {substeps.map((s, i) => (
-                    <tr key={i}>
-                      <td>{s.process}</td>
-                      {SUBSTEP_FIELDS.map(([field]) => (
-                        <td key={field}>
-                          <input value={s[field] || ''} onChange={(e) => setSubstepField(i, field, e.target.value)} />
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </details>
         )}
 
         <div className="form-row">

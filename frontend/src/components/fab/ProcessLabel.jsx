@@ -6,8 +6,9 @@ import QRCode from 'qrcode';
 const DEFAULT_SECTIONS = ['wafer', 'ebeam_evaporation', 'sputtering'];
 const DEFAULT_FIELDS = {
   wafer: ['substrate_name', 'date', 'material_name'],
-  ebeam_evaporation: ['process', 'date', 'thickness_a', 'rate_a_s'],
-  sputtering: ['process', 'date', 'deposition_temp_c', 'target_output_pct', 'calibrated_rate_a_s', 'thickness_nm'],
+  ebeam_evaporation: ['process', 'date', 'deposit_thickness_a', 'stabilize_rate_a_s'],
+  sputtering: ['process', 'date', 'deposition_deposition_temp_c', 'deposition_target_output_pct',
+    'deposition_calibrated_rate_a_s', 'deposition_thickness_nm'],
 };
 const DEFAULT_STEP_FIELDS = ['process', 'date'];
 
@@ -53,16 +54,21 @@ const buildSections = (traveler) => {
     const done = step.records.filter((r) => r.status === 'done');
     const last = done[done.length - 1];
     if (!last) return;
+    // Prefix the sub-step name only when several rows have fields, e.g. "Deposit Thickness, A".
+    const multiRow = step.rows.filter((r) => r.fields.length).length > 1;
     sections.push({
       id: step.id,
       title: `${step.label} ${step.name}`,
       fields: [
         { id: 'process', label: 'Process', value: `${step.label} ${step.name}` },
         { id: 'date', label: 'Date', value: last.step_date },
-        ...step.parameters.map((p) => ({
-          id: p.key,
-          label: p.unit ? `${p.label}, ${p.unit}` : p.label,
-          value: last.parameters?.[p.key],
+        ...step.rows.flatMap((r) => r.fields.map((f) => {
+          const name = multiRow ? `${r.process} ${f.label}` : f.label;
+          return {
+            id: `${r.key}_${f.key}`,
+            label: f.unit ? `${name}, ${f.unit}` : name,
+            value: last.values?.[`${r.key}_${f.key}`],
+          };
         })),
       ],
     });
