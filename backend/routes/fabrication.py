@@ -21,7 +21,6 @@ router = APIRouter()
 PRINTER_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 CHILD_TYPE = {"create_chiplets": "chiplet", "create_chips": "chip"}
 ALLOWED_PARENT_TYPES = {"create_chiplets": {"wafer"}, "create_chips": {"wafer", "chiplet"}}
-SUBSTEP_FIELDS = ("params", "temp", "time", "tool", "specs", "comment")
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # Cloud Run caps request bodies at 32 MB
 
 
@@ -36,45 +35,50 @@ def get_template(template_id):
     return template
 
 
+def clean_value(field, value, where):
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    if field["type"] == "number":
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail=f"{where} '{field['label']}' must be a number, got '{value}'")
+        return int(number) if number.is_integer() else number
+    return str(value).strip()
+
+
 def clean_parameters(step, values):
-    """Keep only the step's declared parameters; numbers must parse."""
-    cleaned = {}
+    """Wafer specification fields; keep only declared keys."""
     declared = {p["key"]: p for p in step["parameters"]}
     unknown = set(values) - set(declared)
     if unknown:
-        raise HTTPException(status_code=400, detail=f"Unknown parameters for {step['label']}: {sorted(unknown)}")
-    for key, param in declared.items():
-        value = values.get(key)
-        if value is None or (isinstance(value, str) and not value.strip()):
-            cleaned[key] = None
-        elif param["type"] == "number":
-            try:
-                number = float(value)
-            except (TypeError, ValueError):
-                raise HTTPException(status_code=400,
-                                    detail=f"{step['label']} '{param['label']}' must be a number, got '{value}'")
-            cleaned[key] = int(number) if number.is_integer() else number
-        else:
-            cleaned[key] = str(value).strip()
-    return cleaned
+        raise HTTPException(status_code=400, detail=f"Unknown fields for {step['label']}: {sorted(unknown)}")
+    return {key: clean_value(field, values.get(key), step["label"]) for key, field in declared.items()}
 
 
-def clean_substeps(step, values):
-    """Sub-step details are editable; their order and process names come from the template."""
-    template_substeps = step["substeps"]
-    if values is None:
-        return [dict(s) for s in template_substeps]
-    if len(values) != len(template_substeps):
-        raise HTTPException(status_code=400, detail=f"{step['label']} expects {len(template_substeps)} sub-steps")
-    cleaned = []
-    for template_sub, value in zip(template_substeps, values):
-        entry = {"process": template_sub["process"]}
-        for field in SUBSTEP_FIELDS:
-            text_value = str(value.get(field) or "").strip()
-            if text_value:
-                entry[field] = text_value
-        cleaned.append(entry)
-    return cleaned
+def clean_rows(step, values):
+    """Validate {row_key: {field_key: value}} against the step's rows.
+
+    Returns the rows as stored (template order, every field) and a flat
+    {row_field: value} map of the filled-in values for searching.
+    """
+    template_rows = {r["key"]: r for r in step["rows"]}
+    unknown_rows = set(values) - set(template_rows)
+    if unknown_rows:
+        raise HTTPException(status_code=400, detail=f"Unknown rows for {step['label']}: {sorted(unknown_rows)}")
+    rows, flat = [], {}
+    for row in step["rows"]:
+        given = values.get(row["key"]) or {}
+        fields = {f["key"]: f for f in row["fields"]}
+        unknown = set(given) - set(fields)
+        if unknown:
+            raise HTTPException(status_code=400,
+                                detail=f"Unknown fields for {step['label']} {row['process']}: {sorted(unknown)}")
+        cleaned = {key: clean_value(field, given.get(key), f"{step['label']} {row['process']}")
+                   for key, field in fields.items()}
+        rows.append({"key": row["key"], "process": row["process"], "values": cleaned})
+        flat.update({f"{row['key']}_{key}": v for key, v in cleaned.items() if v is not None})
+    return rows, flat
 
 
 def unit_summary(sample, parent_id, project):
@@ -125,8 +129,9 @@ def collect_records(units, template_id):
                     "step_date": meta.get("step_date"),
                     "operator": meta.get("operator"),
                     "parameters": meta.get("parameters") or {},
+                    "rows": meta.get("rows") or [],
+                    "values": meta.get("values") or {},
                     "comments": meta.get("comments"),
-                    "substeps": meta.get("substeps") or [],
                     "created_children": meta.get("created_children"),
                     "edited_by": meta.get("edited_by"),
                     "edited_at": meta.get("edited_at"),
@@ -179,8 +184,7 @@ def create_step_dataset(project, orcid, template_id, step, wafer, metadata, targ
     return dataset_id, link_errors
 
 
-def step_metadata(template_id, step, wafer, req_status, step_date, operator, parameters, substeps, comments,
-                  **extra):
+def step_metadata(template_id, step, wafer, req_status, step_date, operator, comments, **fields):
     return {
         "fab_template": template_id,
         "fab_step_id": step["id"],
@@ -191,10 +195,8 @@ def step_metadata(template_id, step, wafer, req_status, step_date, operator, par
         "operator": operator,
         "wafer_id": wafer["unique_id"],
         "wafer_name": wafer["sample_name"],
-        "parameters": parameters,
-        "substeps": substeps,
         "comments": comments,
-        **extra,
+        **fields,
     }
 
 
@@ -238,8 +240,8 @@ async def create_wafer(req: WaferCreateRequest):
                            description=req.description, sample_type="wafer")
     wafer = {"unique_id": new_wafer["unique_id"], "sample_name": name}
     step_date = req.step_date or get_tz_isoformat()[:10]
-    metadata = step_metadata(req.template_id, spec_step, wafer, "done", step_date, req.operator,
-                             spec, [], None, wafer_options=wafer_options)
+    metadata = step_metadata(req.template_id, spec_step, wafer, "done", step_date, req.operator, None,
+                             parameters=spec, wafer_options=wafer_options)
     dataset_id, link_errors = create_step_dataset(req.project, req.orcid, req.template_id, spec_step,
                                                   wafer, metadata, [wafer["unique_id"]])
     return {"wafer": {**wafer, "explorer_url": explorer_url(req.project, wafer["unique_id"])},
@@ -307,8 +309,7 @@ async def record_step(req: StepRecordRequest):
     if outside:
         raise HTTPException(status_code=400, detail=f"Not part of this wafer: {outside}")
 
-    parameters = clean_parameters(step, req.parameters) if req.status == "done" else {}
-    substeps = clean_substeps(step, req.substeps)
+    rows, values = clean_rows(step, req.rows) if req.status == "done" else ([], {})
 
     created = []
     errors = []
@@ -352,7 +353,7 @@ async def record_step(req: StepRecordRequest):
         target_ids = list(dict.fromkeys(p for p, _ in planned))
 
     metadata = step_metadata(req.template_id, step, wafer, req.status, req.step_date, req.operator,
-                             parameters, substeps, req.comments, created_children=created or None)
+                             req.comments, rows=rows, values=values, created_children=created or None)
     dataset_id, link_errors = create_step_dataset(req.project, req.orcid, req.template_id, step,
                                                   wafer, metadata, target_ids)
     errors.extend(link_errors)
@@ -425,12 +426,14 @@ async def edit_step_record(dataset_id: str, req: StepEditRequest):
     updated = {
         **meta,
         "step_date": req.step_date,
-        "parameters": clean_parameters(step, req.parameters) if meta.get("status") == "done" else {},
-        "substeps": clean_substeps(step, req.substeps),
         "comments": req.comments,
         "edited_by": req.operator,
         "edited_at": get_tz_isoformat(),
     }
+    if step["id"] == "wafer_spec":
+        updated["parameters"] = clean_parameters(step, req.parameters)
+    elif meta.get("status") == "done":
+        updated["rows"], updated["values"] = clean_rows(step, req.rows)
     try:
         client.datasets.update_scientific_metadata(dataset_id, updated, overwrite=True)
     except Exception as err:

@@ -110,9 +110,8 @@ class StepRecordRequest(BaseModel):
     target_ids: List[str]
     status: Literal["done", "skipped"]
     step_date: str
-    parameters: Dict[str, Any] = {}
-    # Edited copy of the template's substeps (same order); None keeps the template's.
-    substeps: Optional[List[Dict[str, Any]]] = None
+    # {row_key: {field_key: value}} for the step's sub-step rows.
+    rows: Dict[str, Dict[str, Any]] = {}
     comments: Optional[str] = None
     # For create_chiplets / create_chips steps: parent unique_id -> new child names.
     new_children: Dict[str, List[str]] = {}
@@ -121,8 +120,9 @@ class StepEditRequest(BaseModel):
     orcid: str
     operator: str
     step_date: str
+    rows: Dict[str, Dict[str, Any]] = {}
+    # Only used when editing the wafer specification record.
     parameters: Dict[str, Any] = {}
-    substeps: Optional[List[Dict[str, Any]]] = None
     comments: Optional[str] = None
 
 class PrintLabelRequest(BaseModel):

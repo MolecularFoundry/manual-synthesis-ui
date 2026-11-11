@@ -28,10 +28,14 @@ def check(name, cond):
     print(("PASS " if cond else "FAIL ") + name)
 
 
-def step(wafer_id, step_id, targets, status="done", params=None, new_children=None, substeps=None):
+def fields(step_def, row_key):
+    return {f["key"]: f for f in next(r for r in step_def["rows"] if r["key"] == row_key)["fields"]}
+
+
+def step(wafer_id, step_id, targets, status="done", rows=None, new_children=None):
     body = {**base, "template_id": T, "step_id": step_id, "wafer_id": wafer_id, "target_ids": targets,
-            "status": status, "step_date": "2026-11-10", "parameters": params or {}, "comments": "c",
-            "new_children": new_children or {}, "substeps": substeps}
+            "status": status, "step_date": "2026-11-10", "rows": rows or {}, "comments": "c",
+            "new_children": new_children or {}}
     return api.post("/api/fab/steps", json=body)
 
 
@@ -59,46 +63,49 @@ check("chiplets are Step 14, post clean Step 21", labels["Step 14"]["id"] == "cu
 check("file uploads on the requested steps",
       sorted(l for l, s in labels.items() if s.get("allow_files"))
       == sorted(["Step 2", "Step 5", "Step 7", "Step 8A", "Step 8B", "Step 11", "Step 15", "Step 17"]))
-check("split times", {"strike_time_s", "etch_time_s"} <= {p["key"] for p in labels["Step 7"]["parameters"]}
-      and {"strike_time_s", "etch_time_s"} <= {p["key"] for p in labels["Step 15"]["parameters"]}
-      and {"etch1_time_s", "etch2_time_s"} <= {p["key"] for p in labels["Step 9"]["parameters"]})
-check("liftoff NMP time in minutes", any(p["key"] == "nmp_time_min" and p["default"] == 120
-                                         for p in labels["Step 20"]["parameters"]))
+check("split times", {"strike_time_s", "etch_time_s"} <= set(fields(labels["Step 7"], "o2_descum"))
+      and {"strike_time_s", "etch_time_s"} <= set(fields(labels["Step 15"], "o2_descum"))
+      and {"etch1_time_s", "etch2_time_s"} <= set(fields(labels["Step 9"], "trench_etch")))
+check("liftoff NMP time in minutes", fields(labels["Step 20"], "nmp_1_hotplate")["time_min"]["default"] == 120)
+check("rows carry their own units", fields(labels["Step 1A"], "diw_rinse")["time_s"]["unit"] == "s"
+      and fields(labels["Step 1A"], "rca_1_clean")["time_min"]["unit"] == "min")
+check("RT became 20 C", fields(labels["Step 2"], "boe_dip")["temp_c"]["default"] == 20)
 check("base metal stored as spec", trav["spec"]["base_metal"] == "Al")
 
-r = step(wid, "rca_clean", [wid], params={"rca_temp_c": "90", "rca_time_min": 20})
+r = step(wid, "rca_clean", [wid], rows={"rca_1_clean": {"temp_c": "90", "time_min": 20, "tool": "Hotplate"},
+                                       "diw_rinse": {"temp_c": 20, "time_s": "20"}})
 check("record step 1A", r.status_code == 200 and r.json()["success"])
 ds_id = r.json()["dataset_id"]
 meta = store["datasets"][ds_id]["scientific_metadata"]
-check("metadata numeric + template substeps", meta["parameters"] == {"rca_temp_c": 90, "rca_time_min": 20}
-      and len(meta["substeps"]) == 5 and meta["fab_step_id"] == "rca_clean")
+check("rows stored in template order", [r["key"] for r in meta["rows"]]
+      == ["rca_1_clean", "diw_beaker_1", "diw_beaker_2", "diw_rinse", "n2_blow_dry"])
+check("flat searchable values, numbers parsed", meta["values"] == {
+      "rca_1_clean_temp_c": 90, "rca_1_clean_time_min": 20, "rca_1_clean_tool": "Hotplate",
+      "diw_rinse_temp_c": 20, "diw_rinse_time_s": 20} and meta["fab_step_id"] == "rca_clean")
 
-subs = [dict(s) for s in labels["Step 2"]["substeps"]]
-subs[0]["time"] = "75 s"
-subs[0]["process"] = "Renamed"
-r = step(wid, "native_oxide_removal", [wid], substeps=subs)
+r = step(wid, "native_oxide_removal", [wid], rows={"boe_dip": {"time_min": "1.5", "chemistry": "7:1 mixture"}})
 m2 = store["datasets"][r.json()["dataset_id"]]["scientific_metadata"]
-check("edited substep saved, process name kept", m2["substeps"][0]["time"] == "75 s"
-      and m2["substeps"][0]["process"] == "BOE dip")
-check("wrong substep count -> 400", step(wid, "native_oxide_removal", [wid], substeps=subs[:2]).status_code == 400)
+check("text + decimal values saved", m2["values"]["boe_dip_time_min"] == 1.5 and m2["values"]["boe_dip_chemistry"] == "7:1 mixture")
+check("unknown row -> 400", step(wid, "native_oxide_removal", [wid], rows={"nope": {"temp_c": 1}}).status_code == 400)
+check("unknown field -> 400", step(wid, "native_oxide_removal", [wid], rows={"boe_dip": {"rpm": 1}}).status_code == 400)
 step2_id = r.json()["dataset_id"]
 
 check("both 3A and 3B can be recorded", step(wid, "ebeam_evaporation", [wid]).status_code == 200
       and step(wid, "sputtering", [wid]).status_code == 200)
-check("bad number -> 400", step(wid, "exposure", [wid], params={"dose_mj_cm2": "lots"}).status_code == 400)
-check("unknown param -> 400", step(wid, "exposure", [wid], params={"foo": 1}).status_code == 400)
+check("bad number -> 400", step(wid, "exposure", [wid], rows={"expose": {"dose_mj_cm2": "lots"}}).status_code == 400)
+check("bad number in another row -> 400", step(wid, "exposure", [wid], rows={"expose": {"defocus": "x"}}).status_code == 400)
 check("skip required -> 400", step(wid, "exposure", [wid], status="skipped").status_code == 400)
 check("skip optional ok", step(wid, "wafer_trench", [wid], status="skipped").status_code == 200)
 check("foreign target -> 400", step(wid, "exposure", ["S_nope"]).status_code == 400)
 
 # View + edit in place
 rec = api.get(f"/api/fab/steps/{ds_id}").json()
-check("view record", rec["record"]["parameters"]["rca_time_min"] == 20 and rec["files"] == [])
-edit = {**base, "step_date": "2026-11-09", "parameters": {"rca_temp_c": 85, "rca_time_min": 25},
-        "substeps": None, "comments": "fixed typo"}
+check("view record", rec["record"]["values"]["rca_1_clean_time_min"] == 20 and rec["files"] == [])
+edit = {**base, "step_date": "2026-11-09", "rows": {"rca_1_clean": {"temp_c": 85, "time_min": 25}},
+        "comments": "fixed typo"}
 r = api.put(f"/api/fab/steps/{ds_id}", json=edit)
 m3 = store["datasets"][ds_id]["scientific_metadata"]
-check("edit overwrites in place", r.status_code == 200 and m3["parameters"]["rca_time_min"] == 25
+check("edit overwrites in place", r.status_code == 200 and m3["values"]["rca_1_clean_time_min"] == 25
       and m3["step_date"] == "2026-11-09" and m3["edited_by"] == "Tim" and m3["operator"] == "Tim"
       and m3["fab_step_id"] == "rca_clean")
 store["can_edit"] = False
@@ -123,7 +130,7 @@ check("chiplets created", r.status_code == 200 and len(r.json()["created"]) == 2
 cl = [c["unique_id"] for c in r.json()["created"]]
 check("re-cut wafer -> 400", step(wid, "cut_chiplets", [wid], new_children={wid: ["CLX"]}).status_code == 400)
 check("dup child names -> 400", step(wid, "dicing", cl, new_children={cl[0]: ["A", "A"]}).status_code == 400)
-r = step(wid, "jj_deposition", cl, params={"oxidation_time_s": 600})
+r = step(wid, "jj_deposition", cl, rows={"oxidation": {"time_s": 600, "pressure_torr": 12}})
 check("step on both chiplets", r.status_code == 200
       and {(c, r.json()["dataset_id"]) for c in cl} <= set(store["sample_datasets"]))
 r = step(wid, "dicing", cl, new_children={cl[0]: ["CL01_C01", "CL01_C02"], cl[1]: ["CL02_C01"]})
@@ -137,7 +144,7 @@ check("statuses + edits visible", st["rca_clean"]["status"] == "done" and st["wa
 
 leaves = [u["unique_id"] for u in trav["units"] if u["is_leaf"]]
 store["fail_link"] = {leaves[-1]}
-r = step(wid, "jj_liftoff", leaves, params={"nmp_time_min": 90})
+r = step(wid, "jj_liftoff", leaves, rows={"nmp_1_hotplate": {"time_min": 90}})
 check("partial link failure reported", r.status_code == 200 and not r.json()["success"] and len(r.json()["errors"]) == 1)
 store["fail_link"] = set()
 

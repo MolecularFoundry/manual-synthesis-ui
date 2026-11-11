@@ -1,6 +1,7 @@
 # Process flow templates for the fabrication traveler.
-# Transcribed from the QCMF wafer traveler sheet (WFR_04). Only `parameters`
-# are entered per run; `substeps` are copied into each record as-is.
+# Transcribed from the QCMF wafer traveler sheet (WFR_04). Each step is a list
+# of sub-step rows; each row has only its own fields, each with its own unit.
+# Every field is editable per run; numeric fields are stored as numbers.
 
 
 def num(key, label, unit=None, default=None):
@@ -11,384 +12,265 @@ def text(key, label, default=None):
     return {"key": key, "label": label, "unit": None, "type": "text", "default": default}
 
 
-def sub(process, **details):
-    return {"process": process, **details}
+def row(key, process, *fields):
+    return {"key": key, "process": process, "fields": list(fields)}
 
 
-DESCUM_SUBSTEPS = [
-    sub("Load wafer"),
-    sub("O2 descum", comment="strike step, then etch step"),
-    sub("Unload wafer"),
-    sub("Chamber clean with cleaning wafer", time="30 mins", comment="Recipe name = CHAMBER CLEAN WITH WAFER"),
-    sub("Microscope inspection"),
-]
+# Field shorthands
+def temp(v=None): return num("temp_c", "Temp", "°C", v)
+def minutes(v=None): return num("time_min", "Time", "min", v)
+def seconds(v=None): return num("time_s", "Time", "s", v)
+def tool(v=None): return text("tool", "Tool", v)
+def chem(v=None): return text("chemistry", "Chemistry", v)
+def comment(v=None): return text("comment", "Comment", v)
+def specs(v=None): return text("specs", "Tool specs", v)
+def recipe(v=None): return text("recipe", "Recipe name", v)
+def resist(v=None): return text("resist", "Resist", v)
+def program(v=None): return num("program", "Program", None, v)
+def program_name(v=None): return text("program", "Program", v)
+def rpm(v=None): return num("spin_rpm", "Spin speed", "rpm", v)
+def freq(v=None): return num("freq_khz", "Frequency", "kHz", v)
+def power_pct(v=None): return num("power_pct", "Power", "%", v)
+def thickness_nm(v=None): return num("thickness_nm", "Thickness", "nm", v)
+def rate(v=None): return num("rate_a_s", "Rate", "A/s", v)
+def accuracy(v=None): return num("accuracy_pct", "Accuracy", "%", v)
+def pressure_torr(v=None): return num("pressure_torr", "Pressure", "Torr", v)
 
-DESCUM_PARAMETERS = [
-    text("recipe", "Recipe name", "YB_O2_Descum"),
-    num("forward_power_w", "Forward power", "W", 30),
-    num("icp_power_w", "ICP power", "W", 0),
-    num("pressure_mtorr", "Pressure", "mTorr", 80),
-    num("o2_flow_sccm", "O2 flow", "sccm", 100),
-    num("strike_time_s", "Strike time", "s", 5),
-    num("etch_time_s", "Etch time", "s", 20),
-]
+
+def sonicate(key, process, t, minutes_, f, p, tool_="Sonicator", note=None):
+    fields = [temp(t), minutes(minutes_), tool(tool_), freq(f), power_pct(p)]
+    if note:
+        fields.append(comment(note))
+    return row(key, process, *fields)
+
+
+def blank(key, process):
+    return row(key, process)
+
+
+def chamber_clean_rows(minutes_=30):
+    return [
+        blank("load_cleaning_wafer", "Load cleaning wafer"),
+        row("chamber_clean", "Chamber clean", minutes(minutes_), recipe("CHAMBER CLEAN WITH WAFER")),
+        blank("microscope", "Microscope inspection"),
+    ]
+
+
+def descum_rows(tool_name):
+    return [
+        row("o2_descum", "O2 descum", recipe("YB_O2_Descum"), tool(tool_name),
+            num("forward_power_w", "Forward power", "W", 30),
+            num("icp_power_w", "ICP power", "W", 0),
+            num("pressure_mtorr", "Pressure", "mTorr", 80),
+            num("o2_flow_sccm", "O2 flow", "sccm", 100),
+            num("strike_time_s", "Strike time", "s", 5),
+            num("etch_time_s", "Etch time", "s", 20)),
+        blank("unload_wafer", "Unload wafer"),
+        *chamber_clean_rows(),
+    ]
+
+
+def step(id_, label, name, rows, tool_=None, optional=False, condition=None, action=None, allow_files=False):
+    return {"id": id_, "label": label, "name": name, "optional": optional, "condition": condition,
+            "tool": tool_, "action": action, "allow_files": allow_files, "rows": rows}
+
 
 QCMF_QUBIT_V1_STEPS = [
-    {
-        "id": "rca_clean", "label": "Step 1A", "name": "Substrate cleaning (RCA)",
-        "optional": False, "condition": {"wafer_type": "qubit"}, "tool": "Hotplate", "action": None,
-        "substeps": [
-            sub("RCA 1 clean", params="NH4OH:H2O2:H2O 1:1:5", tool="Hotplate",
-                comment="20ml:20ml:100ml for 4 inch wafers. Pour NH4OH and DIW, bring to 90C, then add H2O2"),
-            sub("DIW beaker 1", temp="RT", time="1 min"),
-            sub("DIW beaker 2", temp="RT", time="1 min"),
-            sub("DIW rinse", temp="RT", time="20 secs"),
-            sub("N2 blow dry"),
-        ],
-        "parameters": [
-            num("rca_temp_c", "RCA temperature", "C", 90),
-            num("rca_time_min", "RCA time", "min", 20),
-        ],
-    },
-    {
-        "id": "solvent_clean", "label": "Step 1B", "name": "Substrate cleaning (solvents)",
-        "optional": False, "condition": {"wafer_type": "test"}, "tool": "Sonicator", "action": None,
-        "substeps": [
-            sub("Acetone", temp="50C", time="5 mins", tool="Sonicator", specs="37kHz at 100% pwr"),
-            sub("Acetone", temp="50C", time="5 mins", tool="Sonicator", specs="80kHz at 100% pwr"),
-            sub("IPA", temp="50C", time="5 mins", tool="Sonicator", specs="80kHz at 100% pwr"),
-            sub("IPA rinse and N2 dry"),
-        ],
-        "parameters": [
-            num("acetone_temp_c", "Acetone temperature", "C", 50),
-            num("acetone_time_min", "Acetone time (each bath)", "min", 5),
-            num("ipa_time_min", "IPA time", "min", 5),
-        ],
-    },
-    {
-        "id": "native_oxide_removal", "allow_files": True, "label": "Step 2", "name": "Native oxide removal",
-        "optional": False, "condition": None, "tool": "HF Bench", "action": None,
-        "substeps": [
-            sub("BOE dip", params="10:1 mixture", temp="RT", tool="HF Bench"),
-            sub("DIW beaker 1", temp="RT", time="1 min", tool="HF Bench"),
-            sub("DIW beaker 2", temp="RT", time="1 min", tool="HF Bench"),
-            sub("IPA", temp="RT", time="30 secs", tool="Solvent bench"),
-            sub("N2 blow dry", tool="Solvent bench"),
-            sub("Transfer to glove box"),
-        ],
-        "parameters": [num("boe_time_s", "BOE dip time", "s", 60)],
-    },
-    {
-        "id": "ebeam_evaporation", "label": "Step 3A", "name": "E-beam evaporation",
-        "optional": True, "condition": None, "tool": "E-beam evaporator", "action": None,
-        "substeps": [
-            sub("Load wafer into loadlock"),
-            sub("Precondition"), sub("Autotune"), sub("Stabilize"), sub("Deposit"), sub("Postcondition"),
-        ],
-        "parameters": [
-            text("recipe", "Recipe name"),
+    step("rca_clean", "Step 1A", "Substrate cleaning (RCA)", tool_="Hotplate", condition={"wafer_type": "qubit"}, rows=[
+        row("rca_1_clean", "RCA 1 clean", chem("NH4OH:H2O2:H2O 1:1:5"), temp(90), minutes(20), tool("Hotplate"),
+            comment("20ml:20ml:100ml for 4 inch wafers. Pour NH4OH and DIW, bring to 90C, then add H2O2")),
+        row("diw_beaker_1", "DIW beaker 1", temp(20), minutes(1)),
+        row("diw_beaker_2", "DIW beaker 2", temp(20), minutes(1)),
+        row("diw_rinse", "DIW rinse", temp(20), seconds(20)),
+        blank("n2_blow_dry", "N2 blow dry"),
+    ]),
+    step("solvent_clean", "Step 1B", "Substrate cleaning (solvents)", tool_="Sonicator", condition={"wafer_type": "test"}, rows=[
+        sonicate("acetone_1", "Acetone 1", 50, 5, 37, 100),
+        sonicate("acetone_2", "Acetone 2", 50, 5, 80, 100),
+        sonicate("ipa", "IPA", 50, 5, 80, 100),
+        blank("ipa_rinse_n2_dry", "IPA rinse and N2 dry"),
+    ]),
+    step("native_oxide_removal", "Step 2", "Native oxide removal", tool_="HF Bench", allow_files=True, rows=[
+        row("boe_dip", "BOE dip", chem("10:1 mixture"), temp(20), minutes(1), tool("HF Bench")),
+        row("diw_beaker_1", "DIW beaker 1", temp(20), minutes(1), tool("HF Bench")),
+        row("diw_beaker_2", "DIW beaker 2", temp(20), minutes(1), tool("HF Bench")),
+        row("ipa", "IPA", temp(20), seconds(30), tool("Solvent bench"),
+            comment("Sample transferred to solvent bench for IPA and next steps")),
+        row("n2_blow_dry", "N2 blow dry", tool("Solvent bench")),
+        blank("transfer_glove_box", "Transfer to glove box"),
+    ]),
+    step("ebeam_evaporation", "Step 3A", "E-beam evaporation", tool_="E-beam evaporator", optional=True, rows=[
+        blank("load_wafer", "Load wafer into loadlock"),
+        row("chamber", "Recipe and chambers", recipe(),
             num("ox_chamber_pressure_torr", "Ox chamber pressure", "Torr"),
-            num("evap_chamber_pressure_torr", "Evap chamber pressure", "Torr"),
-            num("precondition_power_pct", "Precondition power", "%", 7),
-            num("stability_factor", "Autotune stability factor", None, 2),
-            num("rate_a_s", "Deposition rate", "A/s", 2),
-            num("rate_accuracy_pct", "Rate accuracy", "%", 5),
-            num("thickness_a", "Thickness", "A", 1000),
-        ],
-    },
-    {
-        "id": "sputtering", "label": "Step 3B", "name": "Sputtering",
-        "optional": True, "condition": None, "tool": "Sputter", "action": None,
-        "substeps": [sub("Load wafer"), sub("Deposition"), sub("Unload wafer")],
-        "parameters": [
-            text("recipe", "Recipe name"),
-            text("target", "Target"),
-            num("deposition_temp_c", "Deposition temperature", "C"),
+            num("evap_chamber_pressure_torr", "Evap chamber pressure", "Torr")),
+        row("precondition", "Precondition", power_pct(7)),
+        row("autotune", "Autotune", num("stability_factor", "Stability factor", None, 2)),
+        row("stabilize", "Stabilize", rate(2), accuracy(5)),
+        row("deposit", "Deposit", num("thickness_a", "Thickness", "A", 1000)),
+        blank("postcondition", "Postcondition"),
+    ]),
+    step("sputtering", "Step 3B", "Sputtering", tool_="Sputter", optional=True, rows=[
+        blank("load_wafer", "Load wafer"),
+        row("deposition", "Deposition", recipe(), text("target", "Target"),
+            text("power_supply", "Power supply / target position"),
+            num("chamber_pressure", "Sputter chamber pressure"),
+            num("deposition_temp_c", "Deposition temp", "°C"),
             num("ar_flow_sccm", "Ar flow", "sccm"),
             num("pressure_mtorr", "Pressure", "mTorr"),
             num("target_output_pct", "Target output", "%"),
             num("target_dc_bias_v", "Target DC bias", "V"),
-            text("n2_flow_sccm", "N2 flow rate (min-max)"),
+            text("n2_flow_sccm", "N2 flow rate (min-max), sccm"),
             num("calibrated_rate_a_s", "Calibrated rate", "A/s"),
             num("tooling_factor", "Tooling factor"),
-            num("thickness_nm", "Thickness", "nm"),
-            num("target_substrate_distance", "Target-substrate distance"),
-        ],
-    },
-    {
-        "id": "resist_spin", "label": "Step 4", "name": "Resist spinning",
-        "optional": False, "condition": None, "tool": "CEE hotplate", "action": None,
-        "substeps": [
-            sub("Bake", tool="CEE hotplate", comment="Program 100C_180s"),
-            sub("N2 blow dry", comment="After placing in spinner"),
-            sub("Spincoat", specs="Program 9"),
-            sub("Bake", tool="CEE hotplate", comment="Program 100C_180s"),
-            sub("Clean up spinner"),
-        ],
-        "parameters": [
-            text("resist", "Resist", "S1805"),
-            num("spin_rpm", "Spin speed", "rpm", 6000),
-            num("spin_time_s", "Spin time", "s", 45),
-            num("bake_temp_c", "Bake temperature", "C", 100),
-            num("bake_time_min", "Bake time", "min", 3),
-        ],
-    },
-    {
-        "id": "exposure", "allow_files": True, "label": "Step 5", "name": "Exposure",
-        "optional": False, "condition": None, "tool": "MLA", "action": None,
-        "substeps": [sub("Calibrate dose"), sub("Expose", tool="MLA", comment="Can vary based on the dose test")],
-        "parameters": [
-            num("dose_mj_cm2", "Dose", "mJ/cm2", 50),
-            num("defocus", "Defocus", None, 4),
-        ],
-    },
-    {
-        "id": "development", "label": "Step 6", "name": "Development",
-        "optional": False, "condition": None, "tool": "Acid bench", "action": None,
-        "substeps": [
-            sub("MF 26A", temp="RT", tool="Acid bench", comment="Strong agitation during development"),
-            sub("DIW", temp="RT", time="30 sec"),
-            sub("DIW rinse + N2 blow dry"),
-            sub("Microscope inspection"),
-        ],
-        "parameters": [num("mf26a_time_s", "MF 26A time", "s", 30)],
-    },
-    {
-        "id": "o2_descum", "allow_files": True, "label": "Step 7", "name": "O2 descum",
-        "optional": False, "condition": None, "tool": "Oxford ICP chlorine", "action": None,
-        "substeps": DESCUM_SUBSTEPS,
-        "parameters": DESCUM_PARAMETERS,
-    },
-    {
-        "id": "wet_etch", "allow_files": True, "label": "Step 8A", "name": "Wet etch",
-        "optional": True, "condition": None, "tool": "Acid bench", "action": None,
-        "substeps": [
-            sub("Phosphoric acid / Al etchant", temp="RT", tool="Acid bench",
-                comment="Etch rates vary based on thickness and sample size"),
-            sub("DIW 1", time="2 mins", comment="Magnetic spinner at 600 rpm while rinsing"),
-            sub("DIW 2", comment="Second beaker of fresh DIW"),
-            sub("DIW rinse + N2 dry"),
-        ],
-        "parameters": [num("etch_time_min", "Etch time", "min", 7)],
-    },
-    {
-        "id": "dry_etch", "allow_files": True, "label": "Step 8B", "name": "Dry etch",
-        "optional": True, "condition": None, "tool": "Oxford ICP fluorine", "action": None,
-        "substeps": [
-            sub("Load wafer"), sub("CF4 etch", comment="Time calculated from etch rate and thickness"),
-            sub("Unload wafer"),
-            sub("Chamber clean with cleaning wafer", comment="Recipe name = CHAMBER CLEAN WITH WAFER"),
-            sub("Microscope inspection"),
-        ],
-        "parameters": [
-            text("recipe", "Recipe name", "MS_NbN etch"),
+            thickness_nm(),
+            num("target_substrate_distance", "Target-substrate distance")),
+        blank("unload_wafer", "Unload wafer"),
+    ]),
+    step("resist_spin", "Step 4", "Resist spinning", tool_="CEE hotplate", rows=[
+        row("bake_1", "Bake", temp(100), minutes(3), tool("CEE hotplate"), program_name("100C_180s")),
+        row("n2_blow_dry", "N2 blow dry", comment("After placing in spinner")),
+        row("spincoat", "Spincoat", resist("S1805"), rpm(6000), seconds(45), program(9)),
+        row("bake_2", "Bake", temp(100), minutes(3), tool("CEE hotplate"), program_name("100C_180s")),
+        blank("clean_spinner", "Clean up spinner"),
+    ]),
+    step("exposure", "Step 5", "Exposure", tool_="MLA", allow_files=True, rows=[
+        blank("calibrate_dose", "Calibrate dose"),
+        row("expose", "Expose", tool("MLA"), num("dose_mj_cm2", "Dose", "mJ/cm2", 50),
+            num("defocus", "Defocus", None, 4), comment("This can vary based on the dose test")),
+    ]),
+    step("development", "Step 6", "Development", tool_="Acid bench", rows=[
+        row("mf26a", "MF 26A", temp(20), seconds(30), tool("Acid bench"), comment("Strong agitation during development")),
+        row("diw", "DIW", temp(20), seconds(30)),
+        blank("diw_rinse_n2_dry", "DIW rinse + N2 blow dry"),
+        blank("microscope", "Microscope inspection"),
+    ]),
+    step("o2_descum", "Step 7", "O2 descum", tool_="Oxford ICP chlorine", allow_files=True,
+         rows=descum_rows("Oxford ICP chlorine")),
+    step("wet_etch", "Step 8A", "Wet etch", tool_="Acid bench", optional=True, allow_files=True, rows=[
+        row("etchant", "Phosphoric acid / Al etchant", temp(20), minutes(7), tool("Acid bench"),
+            specs("Aim 7 min etch time (6-8 min)"), comment("Etch rates vary based on thickness and sample size")),
+        row("diw_1", "DIW 1", minutes(2), num("stirrer_rpm", "Magnetic stirrer", "rpm", 600)),
+        row("diw_2", "DIW 2", comment("Use a second beaker of fresh DIW to wash out wafer")),
+        blank("diw_rinse_n2_dry", "DIW rinse + N2 dry"),
+    ]),
+    step("dry_etch", "Step 8B", "Dry etch", tool_="Oxford ICP fluorine", optional=True, allow_files=True, rows=[
+        row("dry_etch", "Dry etch", recipe("MS_NbN etch"), tool("Oxford ICP fluorine"),
             num("forward_power_w", "Forward power", "W"),
             num("icp_power_w", "ICP power", "W"),
             num("pressure_mtorr", "Pressure", "mTorr"),
             num("cf4_flow_sccm", "CF4 flow", "sccm", 50),
             num("etch_time_s", "Etch time", "s"),
-        ],
-    },
-    {
-        # The sheet lists O2 descum values here; confirm the real trench recipe.
-        "id": "wafer_trench", "label": "Step 9", "name": "Wafer trench",
-        "optional": True, "condition": None, "tool": "Oxford ICP fluorine", "action": None,
-        "substeps": [
-            sub("Load wafer"), sub("Trench etch step 1"), sub("Trench etch step 2"), sub("Unload wafer"),
-            sub("Chamber clean with cleaning wafer", time="30 mins"),
-            sub("Microscope inspection"),
-        ],
-        "parameters": [
-            text("recipe", "Recipe name", "OPT_CF4_etch"),
+            comment("Calculated based on the etch rate and thickness")),
+        blank("unload_wafer", "Unload wafer"),
+        *chamber_clean_rows(minutes_=None),
+    ]),
+    # The sheet lists O2 descum values here; confirm the real trench recipe.
+    step("wafer_trench", "Step 9", "Wafer trench", tool_="Oxford ICP fluorine", optional=True, rows=[
+        row("trench_etch", "Trench etch", recipe("OPT_CF4_etch"), tool("Oxford ICP fluorine"),
             num("forward_power_w", "Forward power", "W", 30),
             num("icp_power_w", "ICP power", "W", 0),
             num("pressure_mtorr", "Pressure", "mTorr", 80),
             num("gas_flow_sccm", "Gas flow", "sccm", 100),
             num("etch1_time_s", "Etch step 1 time", "s", 5),
-            num("etch2_time_s", "Etch step 2 time", "s", 20),
-        ],
-    },
-    {
-        "id": "resist_strip_qubit", "label": "Step 10A", "name": "Photoresist stripping (qubit)",
-        "optional": False, "condition": {"wafer_type": "qubit"}, "tool": "Hotplate / Sonicator", "action": None,
-        "substeps": [
-            sub("NMP 1", tool="Hotplate"),
-            sub("NMP 1", temp="65C", time="10 + 10 mins", tool="Sonicator", specs="37kHz + 80kHz at 50% pwr"),
-            sub("NMP 2", temp="65C", time="5 mins", tool="Sonicator", specs="80kHz at 50% pwr",
-                comment="New beaker of fresh NMP"),
-            sub("IPA 1", temp="50C", time="5 mins", tool="Sonicator", specs="80kHz at 50% pwr"),
-            sub("IPA 2", temp="50C", time="2 mins", tool="Hotplate"),
-            sub("IPA rinse and N2 blow dry"),
-        ],
-        "parameters": [
-            num("nmp_temp_c", "NMP hotplate temperature", "C", 80),
-            num("nmp_time_min", "NMP hotplate time", "min", 20),
-        ],
-    },
-    {
-        "id": "resist_strip_test", "label": "Step 10B", "name": "Photoresist stripping (test)",
-        "optional": False, "condition": {"wafer_type": "test"}, "tool": "Hotplate / Sonicator", "action": None,
-        "substeps": [
-            sub("NMP 1", tool="Hotplate"),
-            sub("NMP 1", temp="65C", time="10 + 10 mins", tool="Sonicator", specs="37kHz + 80kHz at 50% pwr"),
-            sub("IPA 1", temp="50C", time="5 mins", tool="Sonicator", specs="80kHz at 50% pwr"),
-            sub("IPA rinse and N2 blow dry"),
-        ],
-        "parameters": [
-            num("nmp_temp_c", "NMP hotplate temperature", "C", 80),
-            num("nmp_time_min", "NMP hotplate time", "min", 20),
-        ],
-    },
-    {
-        "id": "jj_resist_spin", "allow_files": True, "label": "Step 11", "name": "JJ e-beam resist spin",
-        "optional": False, "condition": None, "tool": "E-beam spinner / Oven", "action": None,
-        "substeps": [
-            sub("Dehydration bake", temp="100C", time="3 mins", tool="CEE hotplate", comment="Program 100C_180s"),
-            sub("Wafer cooldown", time="1 min"),
-            sub("Spincoat MMA", time="45 sec", tool="ebeam spinner", specs="Program 14"),
-            sub("Bake", tool="Oven"),
-            sub("Wafer cooldown", time="1 min"),
-            sub("Spincoat PMMA C2", time="45 sec", tool="ebeam spinner", specs="Program 4"),
-            sub("Bake", tool="Oven"),
-            sub("Wafer cooldown", time="1 min"),
-            sub("Clean spinner"),
-        ],
-        "parameters": [
-            num("mma_rpm", "MMA spin speed", "rpm", 4000),
-            num("pmma_rpm", "PMMA spin speed", "rpm", 1000),
-            num("bake_temp_c", "Bake temperature", "C", 180),
-            num("bake_time_min", "Bake time", "min", 5),
-        ],
-    },
-    {
-        "id": "jj_ebeam_exposure", "label": "Step 12", "name": "JJ e-beam exposure",
-        "optional": False, "condition": None, "tool": "E-beam writer", "action": None,
-        "substeps": [sub("JJ layer", params="Layer 2/0"), sub("Undercut layer", params="Layer 10/0")],
-        "parameters": [
-            num("base_dose_uc_cm2", "Base dose", "uC/cm2", 1100),
-            num("undercut_dose_pct", "Undercut dose (% of base)", "%", 25),
-        ],
-    },
-    {
-        "id": "jj_development", "label": "Step 13", "name": "JJ development",
-        "optional": False, "condition": None, "tool": "Solvent bench", "action": None,
-        "substeps": [
-            sub("MIBK:IPA 1:3", temp="RT", tool="Solvent bench", comment="Mild agitation"),
-            sub("IPA", temp="RT", time="30 sec"),
-            sub("IPA rinse", comment="Mildly using wash bottle"),
-            sub("N2 blow dry"),
-            sub("Microscope inspection"),
-        ],
-        "parameters": [num("mibk_ipa_time_s", "MIBK:IPA time", "s", 60)],
-    },
-    {
-        "id": "cut_chiplets", "label": "Step 14", "name": "Cut into chiplets",
-        "optional": True, "condition": None, "tool": "Dicing saw", "action": "create_chiplets",
-        "substeps": [sub("Cut wafer into chiplets")],
-        "parameters": [],
-    },
-    {
-        "id": "jj_o2_descum", "allow_files": True, "label": "Step 15", "name": "JJ O2 descum",
-        "optional": False, "condition": None, "tool": "Oxford ICP chlorine", "action": None,
-        "substeps": DESCUM_SUBSTEPS,
-        "parameters": DESCUM_PARAMETERS,
-    },
-    {
-        "id": "jj_native_oxide_removal", "label": "Step 16", "name": "JJ native oxide removal",
-        "optional": True, "condition": None, "tool": "HF Bench", "action": None,
-        "substeps": [
-            sub("Al PAD etch 639", temp="RT", tool="HF Bench"),
-            sub("DIW beaker 1", temp="RT", time="20 secs", tool="HF Bench"),
-            sub("DIW beaker 2", temp="RT", time="20 secs", tool="HF Bench"),
-            sub("DIW rinse", temp="RT", tool="HF Bench"),
-            sub("N2 blow dry", tool="HF Bench"),
-            sub("Transfer to glove box"),
-        ],
-        "parameters": [num("etch_time_s", "Etch time", "s", 10)],
-    },
-    {
-        "id": "jj_deposition", "allow_files": True, "label": "Step 17", "name": "JJ deposition (pDolan)",
-        "optional": False, "condition": None, "tool": "Plassys", "action": None,
-        "substeps": [
-            sub("Load wafer into loadlock", specs="With right orientation"),
-            sub("Ar milling", comment="Subject to change with recipe"),
-            sub("Ti gettering", specs="5% accuracy"),
-            sub("Lead 1", specs="5% accuracy"),
-            sub("Oxidation", comment="Subject to change with recipe"),
-            sub("Ti gettering"),
-            sub("Lead 2", specs="5% accuracy"),
-            sub("Capping oxide"),
-            sub("Unload wafer into loadlock"),
-        ],
-        "parameters": [
-            text("sequence_name", "Sequence name"),
-            num("ar_mill_voltage_v", "Ar mill acc. voltage", "V", 250),
-            num("ar_mill_current_ma", "Ar mill current", "mA", 100),
-            num("ar_mill_time_s", "Ar mill time", "s", 60),
-            num("ti_getter1_nm", "Ti gettering 1 thickness", "nm", 35),
-            num("lead1_tilt_deg", "Lead 1 tilt", "deg", 60),
-            num("lead1_thickness_nm", "Lead 1 thickness", "nm", 60),
-            num("oxidation_pressure_torr", "Oxidation pressure", "Torr", 15),
-            num("oxidation_time_s", "Oxidation time", "s", 900),
-            num("ti_getter2_nm", "Ti gettering 2 thickness", "nm", 35),
-            num("lead2_tilt_deg", "Lead 2 tilt", "deg", 0),
-            num("lead2_thickness_nm", "Lead 2 thickness", "nm", 70),
-            num("capping_pressure_torr", "Capping oxide pressure", "Torr", 10),
-            num("capping_time_s", "Capping oxide time", "s", 300),
-            num("deposition_rate_a_s", "Deposition rate", "A/s", 2),
-        ],
-    },
-    {
-        "id": "predicing_resist", "label": "Step 18", "name": "Resist coating (pre-dicing)",
-        "optional": False, "condition": None, "tool": "CEE hotplate", "action": None,
-        "substeps": [
-            sub("Spincoat", specs="Program 5", comment="No prebake to avoid heating JJs"),
-            sub("Bake", tool="CEE hotplate"),
-            sub("Clean up spinner"),
-        ],
-        "parameters": [
-            text("resist", "Resist", "S1805"),
-            num("spin_rpm", "Spin speed", "rpm", 2000),
-            num("spin_time_s", "Spin time", "s", 45),
-            num("bake_temp_c", "Bake temperature", "C", 100),
-            num("bake_time_min", "Bake time", "min", 3),
-        ],
-    },
-    {
-        "id": "dicing", "label": "Step 19", "name": "Dicing into chips",
-        "optional": False, "condition": None, "tool": "Dicing saw", "action": "create_chips",
-        "substeps": [sub("Dicing")],
-        "parameters": [text("dicing_location", "Dicing location", "Marvell")],
-    },
-    {
-        "id": "jj_liftoff", "label": "Step 20", "name": "JJ liftoff",
-        "optional": False, "condition": None, "tool": "Hotplate / Sonicator", "action": None,
-        "substeps": [
-            sub("NMP 1", tool="Hotplate", specs="Mild pipetting to remove metal",
-                comment="Remove metal with pipette and transfer to waste"),
-            sub("NMP 1", tool="Sonicator with double beaker", specs="80kHz at 30% pwr",
-                comment="Same NMP beaker"),
-            sub("IPA 1", temp="50C", time="10 mins", tool="Hotplate",
-                comment="First rinse in another IPA beaker to remove excess NMP"),
-            sub("IPA rinse and N2 blow dry"),
-        ],
-        "parameters": [
-            num("nmp_temp_c", "NMP temperature", "C", 80),
-            num("nmp_time_min", "NMP time", "min", 120),
-            num("sonication_time_s", "Sonication time", "s", 15),
-        ],
-    },
-    {
-        "id": "jj_post_clean", "label": "Step 21", "name": "JJ post clean",
-        "optional": True, "condition": None, "tool": None, "action": None,
-        "substeps": [],
-        "parameters": [],
-    },
+            num("etch2_time_s", "Etch step 2 time", "s", 20)),
+        blank("unload_wafer", "Unload wafer"),
+        *chamber_clean_rows(),
+    ]),
+    step("resist_strip_qubit", "Step 10A", "Photoresist stripping (qubit)", tool_="Hotplate / Sonicator",
+         condition={"wafer_type": "qubit"}, rows=[
+        row("nmp_1_hotplate", "NMP 1 (hotplate)", temp(80), minutes(20), tool("Hotplate")),
+        sonicate("nmp_1_sonicate_1", "NMP 1 sonication 1", 65, 10, 37, 50),
+        sonicate("nmp_1_sonicate_2", "NMP 1 sonication 2", 65, 10, 80, 50),
+        sonicate("nmp_2", "NMP 2", 65, 5, 80, 50, note="New beaker of fresh NMP"),
+        sonicate("ipa_1", "IPA 1", 50, 5, 80, 50),
+        row("ipa_2", "IPA 2", temp(50), minutes(2), tool("Hotplate")),
+        blank("ipa_rinse_n2_dry", "IPA rinse and N2 blow dry"),
+    ]),
+    step("resist_strip_test", "Step 10B", "Photoresist stripping (test)", tool_="Hotplate / Sonicator",
+         condition={"wafer_type": "test"}, rows=[
+        row("nmp_1_hotplate", "NMP 1 (hotplate)", temp(80), minutes(20), tool("Hotplate")),
+        sonicate("nmp_1_sonicate_1", "NMP 1 sonication 1", 65, 10, 37, 50),
+        sonicate("nmp_1_sonicate_2", "NMP 1 sonication 2", 65, 10, 80, 50),
+        sonicate("ipa_1", "IPA 1", 50, 5, 80, 50),
+        blank("ipa_rinse_n2_dry", "IPA rinse and N2 blow dry"),
+    ]),
+    step("jj_resist_spin", "Step 11", "JJ e-beam resist spin", tool_="E-beam spinner / Oven", allow_files=True, rows=[
+        row("dehydration_bake", "Dehydration bake", temp(100), minutes(3), tool("CEE hotplate"), program_name("100C_180s")),
+        row("cooldown_1", "Wafer cooldown", minutes(1), comment("After placing in spinner")),
+        row("spincoat_mma", "Spincoat MMA", resist("MMA"), rpm(4000), seconds(45), tool("ebeam spinner"), program(14)),
+        row("bake_mma", "Bake", temp(180), minutes(5), tool("Oven")),
+        row("cooldown_2", "Wafer cooldown", minutes(1)),
+        row("spincoat_pmma", "Spincoat PMMA", resist("PMMA C2"), rpm(1000), seconds(45), tool("ebeam spinner"), program(4)),
+        row("bake_pmma", "Bake", temp(180), minutes(5), tool("Oven")),
+        row("cooldown_3", "Wafer cooldown", minutes(1)),
+        blank("clean_spinner", "Clean spinner"),
+    ]),
+    step("jj_ebeam_exposure", "Step 12", "JJ e-beam exposure", tool_="E-beam writer", rows=[
+        row("base_dose", "Base dose", num("dose_uc_cm2", "Dose", "uC/cm2", 1100)),
+        row("undercut_dose", "Undercut dose", num("dose_pct_of_base", "Dose", "% of base", 25)),
+        row("jj_layer", "JJ layer", text("layer", "Layer", "2/0")),
+        row("undercut_layer", "Undercut layer", text("layer", "Layer", "10/0")),
+    ]),
+    step("jj_development", "Step 13", "JJ development", tool_="Solvent bench", rows=[
+        row("mibk_ipa", "MIBK:IPA 1:3", temp(20), seconds(60), tool("Solvent bench"), comment("Mild agitation")),
+        row("ipa", "IPA", temp(20), seconds(30)),
+        row("ipa_rinse", "IPA rinse", comment("Mildly using wash bottle")),
+        blank("n2_blow_dry", "N2 blow dry"),
+        blank("microscope", "Microscope inspection"),
+    ]),
+    step("cut_chiplets", "Step 14", "Cut into chiplets", tool_="Dicing saw", optional=True, action="create_chiplets", rows=[
+        row("cut", "Cut wafer into chiplets", tool("Dicing saw"), comment()),
+    ]),
+    step("jj_o2_descum", "Step 15", "JJ O2 descum", tool_="Oxford ICP chlorine", allow_files=True,
+         rows=descum_rows("Oxford ICP chlorine")),
+    step("jj_native_oxide_removal", "Step 16", "JJ native oxide removal", tool_="HF Bench", optional=True, rows=[
+        row("pad_etch", "Al PAD etch 639", temp(20), seconds(10), tool("HF Bench")),
+        row("diw_beaker_1", "DIW beaker 1", temp(20), seconds(20), tool("HF Bench")),
+        row("diw_beaker_2", "DIW beaker 2", temp(20), seconds(20), tool("HF Bench")),
+        row("diw_rinse", "DIW rinse", temp(20), tool("HF Bench")),
+        row("n2_blow_dry", "N2 blow dry", tool("HF Bench")),
+        blank("transfer_glove_box", "Transfer to glove box"),
+    ]),
+    step("jj_deposition", "Step 17", "JJ deposition (pDolan)", tool_="Plassys", allow_files=True, rows=[
+        row("load_wafer", "Load wafer into loadlock", comment("With right orientation")),
+        row("sequence", "Sequence", text("sequence_name", "Sequence name")),
+        row("ar_milling", "Ar milling", num("voltage_v", "Acc. voltage", "V", 250),
+            num("current_ma", "Current", "mA", 100), seconds(60), comment("Subject to change with recipe")),
+        row("ti_gettering_1", "Ti gettering", thickness_nm(35), rate(2), accuracy(5)),
+        row("lead_1", "Lead 1", num("tilt_deg", "Tilt", "deg", 60), thickness_nm(60), rate(2), accuracy(5)),
+        row("oxidation", "Oxidation", pressure_torr(15), seconds(900), comment("Subject to change with recipe")),
+        row("ti_gettering_2", "Ti gettering", thickness_nm(35), rate(2)),
+        row("lead_2", "Lead 2", num("tilt_deg", "Tilt", "deg", 0), thickness_nm(70), rate(2), accuracy(5)),
+        row("capping_oxide", "Capping oxide", pressure_torr(10), seconds(300)),
+        blank("unload_wafer", "Unload wafer into loadlock"),
+    ]),
+    step("predicing_resist", "Step 18", "Resist coating (pre-dicing)", tool_="CEE hotplate", rows=[
+        row("spincoat", "Spincoat", resist("S1805"), rpm(2000), seconds(45), program(5),
+            comment("No prebake to avoid heating JJs")),
+        row("bake", "Bake", temp(100), minutes(3), tool("CEE hotplate")),
+        blank("clean_spinner", "Clean up spinner"),
+    ]),
+    step("dicing", "Step 19", "Dicing into chips", tool_="Dicing saw", action="create_chips", rows=[
+        row("dicing", "Dicing", text("location", "Location", "Marvell"), tool("Dicing saw")),
+    ]),
+    step("jj_liftoff", "Step 20", "JJ liftoff", tool_="Hotplate / Sonicator", rows=[
+        row("nmp_1_hotplate", "NMP 1 (hotplate)", temp(80), minutes(120), tool("Hotplate"),
+            specs("Mild pipetting to remove metal"), comment("Remove metal with pipette and transfer to waste")),
+        row("nmp_1_sonicate", "NMP 1 (sonicate)", temp(65), seconds(15), tool("Sonicator with double beaker"),
+            freq(80), power_pct(30), comment("Using the same NMP beaker")),
+        row("ipa_1", "IPA 1", temp(50), minutes(10), tool("Hotplate"),
+            comment("First rinse in another IPA beaker to remove excess NMP before transferring to good IPA beaker")),
+        blank("ipa_rinse_n2_dry", "IPA rinse and N2 blow dry"),
+    ]),
+    step("jj_post_clean", "Step 21", "JJ post clean", optional=True, rows=[
+        row("post_clean", "Post clean", chem(), temp(), minutes(), tool(), comment()),
+    ]),
 ]
 
 WAFER_SPEC_STEP = {
     "id": "wafer_spec", "label": "Step 0", "name": "Wafer specification",
-    "optional": False, "condition": None, "tool": None, "action": None, "substeps": [],
+    "optional": False, "condition": None, "tool": None, "action": None, "rows": [],
     "parameters": [
         text("substrate_material", "Substrate material", "Silicon 001"),
         text("substrate_spec", "Substrate specification", "Res >20000 kOhm DSP 550um thick SSP"),
