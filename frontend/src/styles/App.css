@@ -572,3 +572,8 @@ body {
 .step-row-title { font-weight: 600; margin-bottom: 0.25rem; }
 .step-row .param-grid .form-group { margin-bottom: 0.5rem; }
 .param-grid .form-group.wide { grid-column: 1 / -1; }
+/* Sub-step fields: labels stay on one line; a field widens to fit its label instead of wrapping. */
+.step-row .param-grid { display: flex; flex-wrap: wrap; gap: 0 1rem; }
+.step-row .param-grid .form-group { flex: 0 0 auto; width: max-content; min-width: 200px; max-width: 100%; }
+.step-row .param-grid .form-group label { white-space: nowrap; }
+.step-row .param-grid .form-group.wide { flex-basis: 100%; width: 100%; }
